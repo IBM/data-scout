@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Data Scout: Targeted Web Crawling for Domain-Specific Pretraining Corpora"
+type: software
+authors:
+  - name: "IBM Research"
+license: Apache-2.0
+repository-code: "https://github.com/IBM/data-scout"
+preferred-citation:
+  type: conference-paper
+  title: "Data Scout: Targeted Web Crawling for Domain-Specific Pretraining Corpora"
+  authors:
+    - family-names: "Zahid"
+      given-names: "Eelaaf"
+  collection-title: "Proceedings of the 2026 Conference on Empirical Methods in Natural Language Processing (EMNLP)"
+  year: 2026
+  doi: "10.xxxx/xxxxx"

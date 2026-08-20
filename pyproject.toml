@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "data-scout"
+version = "0.1.0"
+description = "LLM-guided targeted web crawling for domain-specific pretraining corpora"
+authors = ["IBM Research"]
+readme = "README.md"
+license = "Apache-2.0"
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+celery = "^5.5"
+curl-cffi = "^0.11"
+fastapi = "^0.116"
+nest-asyncio = "^1.6"
+openai = "^2.8"
+pandas = "^2.3"
+pyarrow = "^20.0"
+pydantic-settings = "^2.9"
+pypdf = "^6.3"
+python-dotenv = "^1.1"
+redis = "^6.4"
+requests = "^2.31"
+boto3 = "^1.41"
+tavily-python = "^0.5"
+trafilatura = "^2.0"
+tqdm = "^4.67"
+tldextract = "^5.3"
+uvicorn = "^0.35"
+websockets = "^15.0"
+
+[tool.poetry.extras]
+ocr = [
+    "docling",
+    "docling-core",
+    "docling-parse",
+    "easyocr",
+    "torch",
+    "torchvision",
+    "transformers",
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,1 +1,43 @@
+# Python
+__pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+venv/
+.venv/
+
+# Developer notes / scratchpads
+src/notes.txt
+notes.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Results / outputs
+results/
+*.parquet
+*.jsonl
+!src/processing/crawl_policy/reasoning.jsonl
+
+# Redis
+dump.rdb
+
+# Frontend
+frontend/build/
+frontend/node_modules/
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
