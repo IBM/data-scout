@@ -39,7 +39,8 @@ class SearchPipeline:
 
         self.max_results_per_query = get("max_results_per_query")
         self.recursion_depth = get("recursion_depth") or 0
-        self.output_base = get("output_folder_name")
+        raw_base = get("output_folder_name") or "output"
+        self.output_base = Path(raw_base).name if Path(raw_base).name not in ("", "..", ".") else "output"
         self.output_format = get("output_format")
         self.annotations = get("annotations") or []
         self.filter_results = get("filter_results") or False
@@ -116,11 +117,7 @@ class SearchPipeline:
             self.logger.critical(message)
 
     def _prepare_output_folder(self):
-        # Sanitize output_base to prevent path traversal
-        safe_base = Path(self.output_base).name
-        if not safe_base or safe_base in (".", ".."):
-            safe_base = "output"
-        base_path = Path(self.settings.results_dir) / safe_base
+        base_path = Path(self.settings.results_dir) / self.output_base
 
         output_path = base_path / self.run_id
         output_path.mkdir(parents=True, exist_ok=False)

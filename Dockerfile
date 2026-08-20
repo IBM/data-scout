@@ -6,14 +6,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml poetry.lock* ./
-COPY README.md ./
+COPY pyproject.toml poetry.lock* README.md ./
 RUN pip install --no-cache-dir poetry && \
     poetry config virtualenvs.create false && \
-    poetry install --no-interaction --no-ansi --without dev
+    poetry install --no-interaction --no-ansi --without dev --no-root
 
 COPY src/ ./src/
 COPY run.py ./
+RUN poetry install --no-interaction --no-ansi --without dev --only-root
 
 # --- API server ---
 FROM base AS api
