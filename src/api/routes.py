@@ -14,6 +14,9 @@ import json
 import logging
 
 router = APIRouter()
+# WebSocket routes live on a separate router: the HTTP router's auth dependency
+# is built on APIKeyHeader/Request, which cannot resolve on a WebSocket scope.
+ws_router = APIRouter()
 logger = logging.getLogger("pipeline_logger")
 _config = SearchConfig()
 
@@ -95,7 +98,7 @@ async def get_redis_cached_logs(job_id: str):
     logs = tracker.get_cached_logs()
     return {"job_id": job_id, "logs": logs}
 
-@router.websocket("/ws/jobs/{job_id}/logs")
+@ws_router.websocket("/ws/jobs/{job_id}/logs")
 async def websocket_job_logs(websocket: WebSocket, job_id: str):
     await websocket.accept()
 
@@ -157,7 +160,7 @@ def get_storage_metrics(job_id: str, request: Request):
         "metrics": metrics_content
     }
 
-@router.websocket("/ws/jobs/{job_id}/metrics")
+@ws_router.websocket("/ws/jobs/{job_id}/metrics")
 async def websocket_job_metrics(websocket: WebSocket, job_id: str):
     await websocket.accept()
 

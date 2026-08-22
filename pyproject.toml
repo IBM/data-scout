@@ -37,8 +37,15 @@ optional = true
 version = "^1.7"
 optional = true
 
+# Declared optional so it can be exposed via the "dev" extra below, which makes
+# the documented `pip install -e ".[dev]"` work for non-Poetry installs.
+[tool.poetry.dependencies.pytest]
+version = "^8.4"
+optional = true
+
 [tool.poetry.extras]
 ocr = ["docling", "easyocr"]
+dev = ["pytest"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4"

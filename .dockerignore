@@ -1,0 +1,35 @@
+# Node dependencies and build output — must be rebuilt inside the image.
+# Copying host node_modules would clobber the container's platform-correct
+# install (see the `npm install` step in the frontend stage).
+**/node_modules
+frontend/build
+
+# Python caches and local envs
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+venv/
+.venv/
+
+# Secrets — the image reads config via env_file at runtime, not from the build
+.env
+
+# Pipeline outputs
+results/
+*.parquet
+dump.rdb
+
+# VCS and editor state
+.git
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Tests and docs not needed at runtime
+tests/
+*.log
