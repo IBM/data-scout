@@ -1,8 +1,18 @@
 services:
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # Deliberately not published to the host: api and worker reach it at
+    # redis:6379 on this network, and publishing 6379 both exposes an
+    # unauthenticated Redis on every host interface and collides with any Redis
+    # the host already runs (which makes startup stall rather than fail).
+    # To inspect it: docker compose exec redis redis-cli
+    restart: unless-stopped
+    # Named, because the dashboard is built entirely from job:* keys. On the
+    # image's anonymous volume, recreating this container erased every job's
+    # history. --appendonly yes so a crash loses at most a second of writes.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -16,6 +26,7 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
@@ -28,12 +39,20 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - results:/app/results
+    # python, not curl: the slim base image has no curl.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   worker:
     build:
       context: .
       target: worker
     env_file: .env
+    restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
@@ -43,6 +62,15 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - results:/app/results
+    # Pinned to this worker's own node name, so the check cannot pass because
+    # some other worker on the broker answered. $(hostname), not $HOSTNAME:
+    # /bin/sh here is dash, which does not set that variable.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.api.celery_worker.celery_app inspect ping -d celery@$$(hostname)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   frontend:
     build:
@@ -50,11 +78,24 @@ services:
       target: frontend
     ports:
       - "3000:80"
+    restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, not localhost: that resolves to ::1 in the container, while
+      # nginx's `listen 80` binds IPv4 only, so the check was refused while the
+      # site served fine.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   # Shared so the API can serve the result files the worker writes when
   # STORAGE_BACKEND=local. Without this each container has its own /app/results
   # and the file listing/view/download endpoints return nothing.
   results:
+  # Job state and history. Named so it outlives `docker compose down`.
+  redis-data:

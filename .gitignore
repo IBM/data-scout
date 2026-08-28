@@ -49,3 +49,7 @@ frontend/package-lock.json
 
 # OS
 Thumbs.db
+
+# Marker written by `make dev`/`make backend` when make itself started Redis,
+# so teardown never shuts down a Redis it does not own.
+.dev-redis-started

@@ -71,15 +71,35 @@ python run.py --mode query --input "machine learning for drug discovery" \
 
 ### 4. Run (API + UI)
 
+Requires a local Redis and Node 18+. Or skip both and use
+[Docker](#docker), which needs neither.
+
 ```bash
-# Start backend services
-make backend
+# Redis + Celery worker + API, in the foreground. Ctrl+C stops them.
+make dev
 
 # In another terminal, start the frontend
 make frontend
 ```
 
 Visit http://localhost:3000 for the UI, http://localhost:8000/docs for the API.
+
+`make dev` reuses a Redis that is already running and only shuts one down if it
+started it, so it will not stop a Redis holding your other data.
+
+### Make targets
+
+| Target | What it does |
+|--------|--------------|
+| `make dev` | Redis (if needed), Celery worker, and API in the foreground; Ctrl+C stops everything it started |
+| `make backend` | The same three in the background. Returns immediately; clean up with `make stop` |
+| `make stop` | Stops this project's worker and API, and Redis only if make started it |
+| `make frontend` | React dev server on :3000 with hot reload |
+| `make build` | `npm install` + production frontend build |
+| `make redis`, `make celery`, `make api` | Individual services, if you want them in separate terminals |
+| `make clean` | Alias for `make stop` |
+
+Override the port with `make dev PORT=8001`, and the bind address with `HOST=127.0.0.1`.
 
 ## Configuration
 
@@ -119,10 +139,20 @@ Options:
   --input_file PATH         Pre-built queries file (search mode only)
 ```
 
+Output goes to `results/<output_folder_name>/<run_id>/`: `topics.jsonl`, the results file
+(`.jsonl` or `.parquet`), `metrics.json`, and `pipeline.log`.
+
+CLI runs need no Redis and are **not recorded as jobs**, so they do not appear in the
+dashboard and have no live progress view — progress goes to the console and
+`pipeline.log`. Submit through the API or UI if you want job history, live logs, and the
+results browser. In exchange, the CLI extracts text across all cores, which the
+containerized worker cannot (see [Known limitations](#known-limitations)).
+
 ## API
 
 The FastAPI server exposes:
 
+- `GET /health` — Liveness check (no auth, used by the container healthcheck)
 - `POST /jobs/` — Submit a pipeline job
 - `GET /jobs/` — List all jobs
 - `GET /jobs/{id}` — Job details
@@ -132,7 +162,8 @@ The FastAPI server exposes:
 - `GET /jobs/{id}/logs/storage` — Final logs from storage
 - `WS /ws/jobs/{id}/logs` — WebSocket live log stream
 - `GET /jobs/{id}/metrics/redis` — Live metrics
-- `GET /jobs/{id}/download-zip` — Presigned URL for results ZIP
+- `GET /jobs/{id}/download-zip` — Download URL for the results ZIP (presigned on S3, a direct route on local storage)
+- `GET /jobs/{id}/download-zip/archive` — The ZIP itself, built on demand for local storage
 - `GET /jobs/{id}/files` — List available output files
 - `GET /jobs/{id}/files/view` — Paginated file content
 
@@ -155,10 +186,10 @@ Environment variables (set in `frontend/.env`):
 ## Testing
 
 ```bash
-# Backend tests (206 tests)
+# Backend tests (235 tests)
 pytest --tb=short
 
-# Frontend tests (42 tests)
+# Frontend tests (44 tests)
 cd frontend && npx react-scripts test --watchAll=false
 ```
 
@@ -169,6 +200,77 @@ docker-compose up -d
 ```
 
 Services: Redis, API server, Celery worker, Frontend (nginx). See `docker-compose.yml`.
+The UI is on http://localhost:3000, the API on http://localhost:8000, and
+`GET /health` reports whether the API is serving. Job history lives in the
+`redis-data` volume and run output in `results`, so both survive
+`docker-compose down`. Redis itself is not published to the host; inspect it with
+`docker-compose exec redis redis-cli`.
+
+The containers run as an unprivileged user (uid 1000). If you are upgrading from
+an image that ran as root, take ownership of the existing volume once, or the
+worker will not be able to write new run output into it:
+
+```bash
+docker run --rm -v data-scout_results:/v alpine chown -R 1000:1000 /v
+```
+
+### Exposure
+
+`API_KEY` is empty by default, which leaves the API unauthenticated, and Compose
+publishes port 8000 on all interfaces. On any machine reachable by others, set
+`API_KEY` in `.env` before starting, or bind the published ports to localhost
+(`"127.0.0.1:8000:8000"`). An open endpoint spends your LLM and search credits.
+
+See [Known limitations](#known-limitations) for what setting `API_KEY` costs you
+in the UI.
+
+### If LLM calls hang inside containers
+
+If your LLM or search endpoint is only reachable over a VPN, a tunnel MTU lower
+than the container network's silently breaks large responses: TCP connects, then
+every request dies with a read timeout, while the same request from the host
+succeeds. Lower the VM's MTU to match the tunnel:
+
+```bash
+# podman; does not survive `podman machine stop`
+podman machine ssh <machine-name> 'sudo ip link set enp0s1 mtu 1380'
+```
+
+For Docker Desktop, set the MTU in Settings → Docker Engine (`"mtu": 1380`).
+
+## Known limitations
+
+**Text extraction runs on one core inside containers.** Extraction is CPU-bound
+Python, and the Celery worker's default `prefork` pool runs each task in a
+daemonic process, which is not permitted to start worker processes. The pipeline
+detects this and falls back to a thread pool, so runs complete correctly but the
+GIL serializes extraction and `MAX_EXTRACT_WORKERS` has little effect. Running the
+CLI (`python run.py`) is unaffected and uses all cores. Switching the worker to
+`--pool=threads` is not a fix on its own: `SearchPipeline.run` installs signal
+handlers, which raises `ValueError` off the main thread, and
+`POST /jobs/{id}/interrupt` depends on `revoke(terminate=True)`, which only
+`prefork` implements.
+
+**The frontend image serves IPv4 only.** nginx is configured with `listen 80`, so
+an IPv6-only network or an IPv6 service address cannot reach it. This is invisible
+behind the published port, which forwards over IPv4. Adding `listen [::]:80;`
+enables IPv6 but makes nginx refuse to start on hosts without an IPv6 stack, so it
+is left off by default; render the listen directive from a template if you need it.
+
+**`API_KEY` breaks two things in the browser.** Browsers cannot attach headers to a
+WebSocket handshake or to a download opened in a new tab, and the UI sends none. So
+with a key set, live logs and metrics are rejected and the results ZIP download
+returns 403, while the rest of the UI keeps working.
+
+**Fresh checkouts start with an empty crawl policy cache.** The cache under
+`src/processing/crawl_policy/` is generated at runtime and deliberately not
+committed — it records the domains each run searched. Early runs therefore ask the
+LLM to classify more domains than later ones.
+
+## Maintainers
+
+Data Scout is developed and maintained by **Eelaaf Zahid** and **Chirag Garg**, its main
+contributors. Please open an issue for bugs and feature requests.
 
 ## Contributing
 

@@ -20,6 +20,15 @@ app.include_router(router, dependencies=[Depends(verify_api_key)])
 app.include_router(ws_router, dependencies=[Depends(verify_api_key_ws)])
 
 
+# Registered on the app rather than the authenticated router: a container
+# healthcheck has no API key, and liveness should not depend on one. Reports
+# whether this process can serve, not whether the pipeline is healthy -- redis
+# and the worker report their own state.
+@app.get("/health", tags=["health"])
+def health():
+    return {"status": "ok"}
+
+
 # Added before CORSMiddleware so it sits *inside* it: Starlette's built-in
 # server-error handling runs outside the CORS layer, so an unhandled exception
 # returns a 500 with no Access-Control-Allow-Origin header. The browser then

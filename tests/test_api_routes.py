@@ -264,3 +264,21 @@ class TestZipDownload:
 
         assert response.status_code == 200
         assert response.json()["download_url"] == "https://example.invalid/signed"
+
+
+class TestHealth:
+    def test_health_is_ok(self, client):
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+    def test_health_needs_no_api_key(self, client):
+        """Container healthchecks cannot send one, so liveness must not require it."""
+        client.app.state.api_key = "a-secret"
+        try:
+            response = client.get("/health")
+        finally:
+            client.app.state.api_key = ""
+
+        assert response.status_code == 200

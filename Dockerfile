@@ -1,4 +1,13 @@
-FROM python:3.11-slim AS base
+# --- Dependency build stage ---
+# The compiler toolchain lives here and is never copied forward, so it does not
+# ship inside the runtime images. Dependencies go into a self-contained venv
+# that the runtime stage copies wholesale.
+FROM python:3.11-slim AS builder
+
+ENV PIP_NO_CACHE_DIR=1 \
+    POETRY_NO_INTERACTION=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
@@ -6,14 +15,44 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Pinned: an unpinned build tool means the image silently changes underneath you,
+# and a Poetry release that alters install semantics is hard to diagnose from a
+# failed build. Bump deliberately.
+ARG POETRY_VERSION=2.4.1
+RUN pip install --no-cache-dir "poetry==${POETRY_VERSION}" && \
+    python -m venv "$VIRTUAL_ENV"
+
+# Dependencies before source, so editing src/ does not reinstall the world.
 COPY pyproject.toml poetry.lock* README.md ./
-RUN pip install --no-cache-dir poetry && \
-    poetry config virtualenvs.create false && \
-    poetry install --no-interaction --no-ansi --without dev --no-root
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-ansi --without dev --no-root
 
 COPY src/ ./src/
 COPY run.py ./
-RUN poetry install --no-interaction --no-ansi --only-root
+RUN poetry install --no-ansi --only-root
+
+# --- Runtime base ---
+FROM python:3.11-slim AS base
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Unprivileged: nothing here needs root, and the ports bound are above 1024.
+RUN useradd --create-home --uid 1000 appuser
+
+WORKDIR /app
+
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser run.py ./
+
+# results/ must exist and be owned by appuser *in the image*: a fresh named
+# volume inherits the ownership of the directory it shadows, so without this it
+# comes up root-owned and the worker cannot write run output into it.
+RUN mkdir -p /app/results && chown -R appuser:appuser /app
+
+USER appuser
 
 # --- API server ---
 FROM base AS api
