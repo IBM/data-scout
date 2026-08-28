@@ -8,10 +8,12 @@ import boto3
 from pyarrow.fs import S3FileSystem, copy_files, FileType
 
 
+from src.storage.base import StorageBackend
+
 logger = logging.getLogger("pipeline_logger")
 
 
-class S3StorageBackend:
+class S3StorageBackend(StorageBackend):
     def __init__(self, access_key: str, secret_key: str, endpoint: str, region: str = "us-east-1", bucket: str = ""):
         self.access_key = access_key
         self.secret_key = secret_key

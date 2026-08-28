@@ -1,12 +1,12 @@
 import re
 import time
-import threading
 from typing import List, Dict
 
 import tldextract
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from src.limits import TAVILY_MAX_RESULTS_PER_QUERY
 from src.processing import utils
 
 
@@ -20,13 +20,17 @@ class TavilySearchClient:
         api_key: str,
         search_depth: str = "basic",
         wait_time_between_queries: float = 1.0,
+        excluded_sites: list[str] | None = None,
     ) -> None:
         from tavily import TavilyClient
         self.client = TavilyClient(api_key=api_key.strip())
         self.search_depth = search_depth
         self.wait_time_between_queries = wait_time_between_queries
+        # Same default and the same source of truth as GoogleSearchClient: this
+        # used to hardcode the two domains and ignore settings.excluded_sites, so
+        # the two providers honoured different exclusion lists.
+        self.excluded_sites = excluded_sites if excluded_sites is not None else ["reddit.com", "medium.com"]
         self.logger = utils.get_default_logger()
-        self._lock = threading.Lock()
 
     def perform_search(
         self,
@@ -36,21 +40,31 @@ class TavilySearchClient:
     ) -> List[Dict]:
         results = []
 
+        # Reported once per call, not per query: Tavily caps a single request at
+        # TAVILY_MAX_RESULTS_PER_QUERY, while MAX_RESULTS_PER_QUERY_LIMIT is 1000
+        # and the CLI advertises "max: 1000". Silently capping made the difference
+        # invisible.
+        capped = min(max_results_per_query, TAVILY_MAX_RESULTS_PER_QUERY)
+        if max_results_per_query > TAVILY_MAX_RESULTS_PER_QUERY:
+            self.logger.warning(
+                f"Tavily returns at most {TAVILY_MAX_RESULTS_PER_QUERY} results per query; "
+                f"max_results_per_query={max_results_per_query} will yield {capped}. "
+                "Use the Google provider for more, or raise recursion depth for more queries."
+            )
+
         def search_one(idx: int, raw_query: str) -> List[Dict]:
             clean = re.sub(r"-site:\S+", "", raw_query).strip()
             excluded = re.findall(r"-site:(\S+)", raw_query)
-            excluded = list(set(excluded + ["reddit.com", "medium.com"]))
+            excluded = list(set(excluded + list(self.excluded_sites)))
 
             time.sleep(self.wait_time_between_queries)
             max_retries, wait = 5, 60.0
             for attempt in range(max_retries + 1):
                 try:
-                    with self._lock:
-                        pass  # rate limiting is handled by the sleep above
                     resp = self.client.search(
                         query=clean,
                         search_depth=self.search_depth,
-                        max_results=min(max_results_per_query, 20),
+                        max_results=capped,
                         include_answer=False,
                         exclude_domains=excluded or None,
                     )

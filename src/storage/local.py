@@ -3,8 +3,10 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+from src.storage.base import StorageBackend
 
-class LocalStorageBackend:
+
+class LocalStorageBackend(StorageBackend):
     """Addresses files by a path relative to base_dir.
 
     base_dir defaults to the working directory because the prefixes handed to

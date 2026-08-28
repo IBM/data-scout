@@ -1,7 +1,13 @@
-from pydantic_settings import BaseSettings
-from pydantic import Field, ConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, model_validator
 from pathlib import Path
+import os
 from src import constants
+
+
+# Anchored to this file: <repo>/src/processing/crawl_policy when run from a
+# clone, and the installed package's directory otherwise.
+_DEFAULT_POLICY_DIR = str(Path(__file__).resolve().parent / "processing" / "crawl_policy")
 
 
 class SearchConfig(BaseSettings):
@@ -62,12 +68,37 @@ class SearchConfig(BaseSettings):
     # Prompt templates
     prompt_templates: dict = constants.PROMPT_TEMPLATES
 
-    # Crawl policy locations
-    policy_dir: str = "src/processing/crawl_policy"
-    allowed_path: Path = Path("src/processing/crawl_policy/allowed.txt")
-    not_allowed_path: Path = Path("src/processing/crawl_policy/not_allowed.txt")
-    reasoning_path: Path = Path("src/processing/crawl_policy/reasoning.jsonl")
-    error_log_path: Path = Path("src/processing/crawl_policy/malformed_lines.log")
+    # Crawl policy locations.
+    #
+    # Absolute, and anchored to this file rather than the working directory. As
+    # relative paths they resolved against the CWD, so running from anywhere but
+    # the repository root silently created a fresh, empty
+    # `src/processing/crawl_policy/` tree there and never found the real cache.
+    # POLICY_DIR overrides the location, which is what to set if the install
+    # directory is not writable.
+    policy_dir: str = Field(_DEFAULT_POLICY_DIR, alias="POLICY_DIR")
+    allowed_path: Path = Path(_DEFAULT_POLICY_DIR) / "allowed.txt"
+    not_allowed_path: Path = Path(_DEFAULT_POLICY_DIR) / "not_allowed.txt"
+    reasoning_path: Path = Path(_DEFAULT_POLICY_DIR) / "reasoning.jsonl"
+    error_log_path: Path = Path(_DEFAULT_POLICY_DIR) / "malformed_lines.log"
+
+    @model_validator(mode="after")
+    def _anchor_policy_paths(self):
+        """Keep the four file paths under policy_dir when POLICY_DIR is set.
+
+        Only the paths still sitting at their default are moved, so an explicit
+        override of an individual path is preserved.
+        """
+        base = Path(self.policy_dir)
+        for field, name in (
+            ("allowed_path", "allowed.txt"),
+            ("not_allowed_path", "not_allowed.txt"),
+            ("reasoning_path", "reasoning.jsonl"),
+            ("error_log_path", "malformed_lines.log"),
+        ):
+            if getattr(self, field) == Path(_DEFAULT_POLICY_DIR) / name:
+                setattr(self, field, base / name)
+        return self
 
     # Prompt params
     generation_params: dict = {
@@ -83,7 +114,9 @@ class SearchConfig(BaseSettings):
     # Sub-categories (empty = disabled)
     sub_categories: list[str] = []
 
-    model_config = ConfigDict(
+    # SettingsConfigDict, not ConfigDict: the latter is not the settings type,
+    # and silently ignored settings-only keys such as env_file typos.
+    model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
     )

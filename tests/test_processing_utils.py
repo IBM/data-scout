@@ -1,3 +1,5 @@
+import multiprocessing
+
 import pytest
 import pandas as pd
 import json
@@ -339,3 +341,107 @@ class TestZipFolder:
         result = zip_folder("/nonexistent/path", str(tmp_path), "test.zip")
         assert result is not None
         assert Path(result).exists()
+
+
+def _slow_append_worker(path_str, tag, barrier_dir):
+    """Append with a deliberately slow read-modify-write.
+
+    The window between the newline fix-up and the writes is what the lock exists
+    to close. Widening it here turns mutual exclusion into something measurable:
+    each process records when it entered and left the critical section, and with
+    a lock held those intervals cannot overlap.
+    """
+    import time
+    from pathlib import Path
+    from src.processing import file_ops
+
+    original = file_ops.ensure_ends_with_newline
+
+    def slow(path):
+        Path(barrier_dir, f"{tag}.enter").write_text(str(time.time()))
+        time.sleep(0.4)
+        original(path)
+
+    file_ops.ensure_ends_with_newline = slow
+    file_ops.append_lines_to_file(Path(path_str), [f"{tag}-0"])
+    Path(barrier_dir, f"{tag}.exit").write_text(str(time.time()))
+
+
+class TestAppendsAreMutuallyExclusive:
+    """Celery workers are separate processes appending to the same cache files.
+
+    Note: a plain volume test does NOT catch this -- 20k lines x 200 chars across
+    four processes produces no corruption either way, because POSIX makes each
+    write() under O_APPEND atomic. What the lock actually protects is the
+    read-modify-write around `ensure_ends_with_newline`, so this test measures
+    mutual exclusion directly rather than hoping for a splice.
+    """
+
+    def test_critical_sections_do_not_overlap(self, tmp_path):
+        target = tmp_path / "allowed.txt"
+        barrier = tmp_path / "barrier"
+        barrier.mkdir()
+
+        tags = ("aaa", "bbb", "ccc")
+        procs = [
+            multiprocessing.Process(target=_slow_append_worker,
+                                    args=(str(target), tag, str(barrier)))
+            for tag in tags
+        ]
+        for p in procs:
+            p.start()
+        for p in procs:
+            p.join(timeout=60)
+
+        intervals = sorted(
+            (float((barrier / f"{tag}.enter").read_text()),
+             float((barrier / f"{tag}.exit").read_text()))
+            for tag in tags
+        )
+        overlaps = [
+            (a, b) for (a, _), (b, _) in zip(intervals, intervals[1:])
+            if b < dict(intervals).get(a, 0)
+        ]
+        for (start_a, end_a), (start_b, _) in zip(intervals, intervals[1:]):
+            assert start_b >= end_a - 0.05, (
+                "two processes were inside the append critical section at once: "
+                f"{start_b} started before {end_a} finished"
+            )
+
+        # and nothing was lost
+        lines = [ln for ln in target.read_text().splitlines() if ln.strip()]
+        assert set(lines) == {f"{tag}-0" for tag in tags}
+
+
+class TestNestedJsonObjects:
+    """`line.endswith("}")` ended the block at the first nested object, so the
+    outer object was never parsed."""
+
+    def test_nested_object_as_the_last_key_is_parsed_whole(self):
+        """The nested brace must be the LAST character on its line to trigger it.
+        With a trailing comma (`},`) the old code happened to work, which is why
+        the shape here matters."""
+        text = '{\n  "domain": "example.com",\n  "meta": {\n    "score": 1\n  }\n}'
+
+        assert extract_json_objects(text) == [
+            {"domain": "example.com", "meta": {"score": 1}}
+        ]
+
+    def test_nested_object_followed_by_more_keys(self):
+        text = '{\n  "meta": {\n    "score": 1\n  }\n  ,"allowed": true\n}'
+
+        assert extract_json_objects(text) == [{"meta": {"score": 1}, "allowed": True}]
+
+    def test_flat_objects_still_work(self):
+        assert extract_json_objects('{"a": 1}\n{"b": 2}') == [{"a": 1}, {"b": 2}]
+
+    def test_brace_inside_a_string_is_not_counted(self):
+        assert extract_json_objects('{"tip": "use } carefully", "n": 2}') == [
+            {"tip": "use } carefully", "n": 2}
+        ]
+
+    def test_malformed_input_is_still_collected(self):
+        malformed = []
+        extract_json_objects('{"a": 1,}', malformed_lines=malformed)
+
+        assert malformed

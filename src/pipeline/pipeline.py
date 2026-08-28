@@ -79,7 +79,7 @@ class SearchPipeline:
         )
         search_provider = get("search_provider") or self.settings.search_provider
         if search_provider == "tavily":
-            self.search_client = TavilySearchClient(self.settings.tavily_api_key, search_depth=self.settings.tavily_search_depth)
+            self.search_client = TavilySearchClient(self.settings.tavily_api_key, search_depth=self.settings.tavily_search_depth, excluded_sites=self.settings.excluded_sites)
         else:
             self.search_client = GoogleSearchClient(self.settings.google_api_key, self.settings.cx_key, excluded_sites=self.settings.excluded_sites)
         self.annotations_obj = Annotations(settings=self.settings, llm=self.llm, input=self.input)

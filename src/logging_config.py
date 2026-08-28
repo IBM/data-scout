@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import RotatingFileHandler
 import sys
 from pathlib import Path
 
@@ -25,7 +26,11 @@ def setup_logger(log_file: Path, log_level=logging.INFO) -> logging.Logger:
 
     # Add new file handler for this run
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+    # Rotating, not plain: a long-lived deployment appending every run to one
+    # file had no bound at all. 10 MB x 3 keeps recent history without growth.
+    file_handler = RotatingFileHandler(
+        log_file, mode="a", encoding="utf-8", maxBytes=10 * 1024 * 1024, backupCount=3
+    )
     file_handler.setLevel(log_level)
     file_format = logging.Formatter(
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"

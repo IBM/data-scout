@@ -248,24 +248,21 @@ def _local_zip(tracker, storage) -> Optional[Path]:
     The pipeline only zips a run when it uploads one, so for local storage the
     archive is created here on first request instead. Returns None when the
     backend keeps files off-host (presigned download applies) or when the run
-    folder is gone.
+    folder is gone -- `local_path` is declared on StorageBackend and returns None
+    for such backends, so no capability check is needed here.
     """
-    resolve = getattr(storage, "local_path", None)
-    if resolve is None:
-        return None
-
     zip_rel = tracker.get_storage_file_path("zip")
     folder_rel = tracker.get_storage_upload_folder()
     if not zip_rel or not folder_rel:
         return None
 
-    zip_abs = resolve(zip_rel)
+    zip_abs = storage.local_path(zip_rel)
     if zip_abs is None:
         return None
     if zip_abs.is_file():
         return zip_abs
 
-    folder_abs = resolve(folder_rel)
+    folder_abs = storage.local_path(folder_rel)
     if folder_abs is None or not folder_abs.is_dir():
         return None
 

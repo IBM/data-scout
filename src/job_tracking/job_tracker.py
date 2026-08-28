@@ -25,7 +25,9 @@ class JobTracker:
     @classmethod
     def get_all_jobs(cls, redis_client: Optional[redis.Redis] = None, redis_url: str = "redis://localhost:6379/0") -> list[dict]:
         r = redis_client or _redis_from_url(redis_url)
-        job_keys = r.keys("job:*")
+        # scan_iter, not keys(): KEYS walks the entire keyspace in one blocking
+        # call, which stalls every other client on a large database.
+        job_keys = list(r.scan_iter(match="job:*", count=100))
         jobs = []
 
         for key in job_keys:

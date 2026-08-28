@@ -1,3 +1,5 @@
+from src.job_tracking.job_tracker import _redis_from_url
+import inspect
 import pytest
 import json
 from unittest.mock import MagicMock, patch
@@ -141,7 +143,9 @@ class TestStorageFilePaths:
 
 class TestGetAllJobs:
     def test_lists_and_sorts(self, mock_redis):
-        mock_redis.keys.return_value = [b"job:aaa", b"job:bbb"]
+        # scan_iter, not keys: get_all_jobs no longer issues a blocking KEYS.
+        # The assertions below are unchanged -- only the Redis call is.
+        mock_redis.scan_iter.return_value = iter([b"job:aaa", b"job:bbb"])
         mock_redis.hgetall.side_effect = [
             {b"mode": b"query", b"input": b"first", b"status": b"completed", b"created_at": b"2024-01-01"},
             {b"mode": b"topic", b"input": b"second", b"status": b"running", b"created_at": b"2024-01-02"},
@@ -184,3 +188,43 @@ class TestGetCachedMetrics:
         assert len(result) == 2
         assert result[0] == {"queries": 10}
         assert result[1] == {"queries": 20}
+
+
+class TestGetAllJobsDoesNotBlockRedis:
+    def test_uses_scan_not_keys(self):
+        """KEYS walks the whole keyspace in one blocking call, stalling every
+        other client on a large database."""
+        source = inspect.getsource(JobTracker.get_all_jobs)
+
+        assert "scan_iter" in source
+        assert '.keys("job:*")' not in source
+
+    def test_still_returns_jobs(self):
+        r = MagicMock()
+        r.scan_iter.return_value = iter([b"job:abc"])
+        r.hgetall.return_value = {b"status": b"completed"}
+
+        jobs = JobTracker.get_all_jobs(redis_client=r)
+
+        assert len(jobs) == 1
+
+
+class TestRedisUrlParsing:
+    """#7 -- hand-parsing the URL dropped credentials and TLS."""
+
+    def test_plain_url_unchanged(self):
+        kw = _redis_from_url("redis://localhost:6379/0").connection_pool.connection_kwargs
+        assert (kw["host"], kw["port"], kw["db"]) == ("localhost", 6379, 0)
+
+    def test_password_is_honoured(self):
+        kw = _redis_from_url("redis://:secret@h:6380/2").connection_pool.connection_kwargs
+        assert kw["password"] == "secret"
+        assert (kw["host"], kw["port"], kw["db"]) == ("h", 6380, 2)
+
+    def test_username_and_password_honoured(self):
+        kw = _redis_from_url("redis://user:pw@h/1").connection_pool.connection_kwargs
+        assert (kw["username"], kw["password"]) == ("user", "pw")
+
+    def test_rediss_uses_tls_connection(self):
+        pool = _redis_from_url("rediss://h/0").connection_pool
+        assert "ssl" in pool.connection_class.__name__.lower()

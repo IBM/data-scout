@@ -1,4 +1,10 @@
 import os
+from contextlib import contextmanager
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
 import logging
 import zipfile
 from pathlib import Path
@@ -38,6 +44,19 @@ def classify_domain(domain, allowed_set, not_allowed_set, unlisted_set=None):
         return None
 
 
+@contextmanager
+def _exclusive_lock(file_obj):
+    """Advisory exclusive lock on an open file, a no-op where fcntl is absent."""
+    if fcntl is None:
+        yield
+        return
+    fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
+    try:
+        yield
+    finally:
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
+
+
 def ensure_ends_with_newline(path):
     if not path.exists():
         return
@@ -52,9 +71,15 @@ def ensure_ends_with_newline(path):
 
 
 def append_lines_to_file(path: Path, lines: list[str]):
-    """
-    Ensures the file ends with a newline before appending new lines.
-    Creates the file if it doesn't exist.
+    """Append lines, holding an exclusive lock for the whole read-modify-write.
+
+    The crawl-policy cache is appended to by every Celery worker, which are
+    separate *processes*, so a threading lock would not help: two workers could
+    interleave `ensure_ends_with_newline` and their writes and produce a line
+    with two domains spliced together. flock serialises them.
+
+    The lock is advisory and POSIX-only. On a platform without fcntl the append
+    proceeds unlocked -- the previous behaviour -- rather than failing the run.
     """
     if not path.exists():
         # The crawl policy cache is gitignored, so on a fresh checkout its
@@ -62,11 +87,14 @@ def append_lines_to_file(path: Path, lines: list[str]):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
-    ensure_ends_with_newline(path)
-
+    # "a" so the file is opened for append; the lock covers the newline fix-up
+    # and the writes together, which is the part that has to be atomic.
     with open(path, "a", encoding="utf-8") as f:
-        for line in lines:
-            f.write(line + "\n")
+        with _exclusive_lock(f):
+            ensure_ends_with_newline(path)
+            for line in lines:
+                f.write(line + "\n")
+            f.flush()
 
     logger = get_default_logger()
     logger.info(f"[+] Appended {len(lines)} lines to {path}")

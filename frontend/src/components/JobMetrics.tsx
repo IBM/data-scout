@@ -231,7 +231,6 @@ export default function JobMetrics({ jobId, status }: JobMetricsProps) {
       wsMetricsRef.current = ws;
 
       ws.onopen = () => {
-        console.log(`Metrics WebSocket connected for job ${jobId}`);
         setMetricsError('');
       };
 

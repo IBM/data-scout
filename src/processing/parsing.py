@@ -92,6 +92,27 @@ def split_queries(response):
     return search_queries
 
 
+def _brace_delta(line: str) -> int:
+    """Net change in nesting depth for one line, ignoring braces inside strings."""
+    delta = 0
+    in_string = False
+    escaped = False
+    for char in line:
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+        elif char == '"':
+            in_string = not in_string
+        elif not in_string:
+            if char == "{":
+                delta += 1
+            elif char == "}":
+                delta -= 1
+    return delta
+
+
 def extract_json_objects(text: str, malformed_lines: list = None):
     """
     Extracts all valid JSON objects from a text blob that may include Markdown-style formatting.
@@ -99,6 +120,7 @@ def extract_json_objects(text: str, malformed_lines: list = None):
     json_blocks = []
     current_block = []
     inside_code_block = False
+    depth = 0
 
     for line in text.splitlines():
         line = line.strip()
@@ -110,7 +132,13 @@ def extract_json_objects(text: str, malformed_lines: list = None):
         if inside_code_block or current_block or line.startswith("{"):
             current_block.append(line)
 
-            if line.endswith("}"):
+            # Track nesting instead of ending the block at the first line that
+            # happens to close with "}". A nested object terminated the block
+            # early, so the outer object was never parsed and its remaining lines
+            # were treated as the start of a new one.
+            depth += _brace_delta(line)
+
+            if depth <= 0:
                 try:
                     obj = json.loads("\n".join(current_block))
                     json_blocks.append(obj)
@@ -118,5 +146,6 @@ def extract_json_objects(text: str, malformed_lines: list = None):
                     if malformed_lines is not None:
                         malformed_lines.append("\n".join(current_block))
                 current_block = []
+                depth = 0
 
     return json_blocks

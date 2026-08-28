@@ -2,6 +2,11 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.llm.generator import LLMClient
+import httpx
+import logging
+import openai
+from types import SimpleNamespace
+from src.llm.generator import NON_RETRYABLE_ERRORS
 
 
 class TestLLMClientInit:
@@ -152,3 +157,47 @@ class TestLLMClientChat:
         prompts = [f"prompt_{i}" for i in range(20)]
         results = asyncio.run(generator.chat(prompts, concurrency=2, show_progress=False))
         assert len(results) == 20
+
+
+def _openai_error(cls, status):
+    response = httpx.Response(status, request=httpx.Request("POST", "http://x/v1/chat"))
+    return cls("nope", response=response, body=None)
+
+
+class TestNonRetryableLLMErrors:
+    """Every exception was retried -- 10 attempts backing off to 27s -- including
+    401/403/404, so a typo in LLM_MODEL_NAME took ~4 minutes per prompt to fail."""
+
+    @pytest.mark.parametrize("cls,status", [
+        (openai.AuthenticationError, 401),
+        (openai.PermissionDeniedError, 403),
+        (openai.NotFoundError, 404),
+        (openai.BadRequestError, 400),
+    ])
+    def test_classified_as_non_retryable(self, cls, status):
+        assert isinstance(_openai_error(cls, status), NON_RETRYABLE_ERRORS)
+
+    def test_rate_limit_is_still_retryable(self):
+        """429 must keep retrying -- that is what the backoff is for."""
+        assert not isinstance(_openai_error(openai.RateLimitError, 429), NON_RETRYABLE_ERRORS)
+
+    def test_a_bad_key_is_not_retried(self):
+        """One call, not ten, and no backoff sleep."""
+        from src.llm.generator import LLMClient
+
+        client = LLMClient.__new__(LLMClient)
+        client.model = "m"
+        client.logger = logging.getLogger("test-llm-retry")
+        create = MagicMock(side_effect=_openai_error(openai.AuthenticationError, 401))
+        client.client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        )
+
+        import asyncio
+
+        with patch("asyncio.sleep") as slept:
+            result = asyncio.run(client.chat(["p"], show_progress=False))
+
+        assert result == [None]
+        assert create.call_count == 1, f"retried {create.call_count} times"
+        slept.assert_not_called()

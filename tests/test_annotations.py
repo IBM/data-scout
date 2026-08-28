@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 import pytest
 import pandas as pd
 from unittest.mock import MagicMock, patch
@@ -195,3 +196,58 @@ class TestApplyChaining:
         ann = Annotations(settings=settings, llm=mock_llm, input="test")
         with pytest.raises(ValueError, match="Unknown annotation"):
             ann.apply(df, annotations=["nonexistent"])
+
+
+@pytest.fixture
+def ann_settings(tmp_path):
+    """Crawl-policy settings pointed at tmp_path so nothing touches the real cache."""
+    return SimpleNamespace(
+        allowed_path=tmp_path / "allowed.txt",
+        not_allowed_path=tmp_path / "not_allowed.txt",
+        reasoning_path=tmp_path / "reasoning.jsonl",
+        error_log_path=tmp_path / "malformed.log",
+        sub_categories=[],
+        prompt_templates={"crawlable_annotation": "Classify: {input}"},
+        generation_params={"crawlable": {"temperature": 0}},
+    )
+
+
+class TestPartialBatchResponses:
+    """#5 -- an empty first batch discarded every other batch's classifications."""
+
+    class _FirstBatchEmptyLLM:
+        def chat_sync(self, prompts, params=None, **kw):
+            good = '{"domain": "good", "status": "ok"}'
+            return [None] + [good] * (len(prompts) - 1)
+
+    def test_later_batches_survive_an_empty_first_batch(self, ann_settings, tmp_path):
+        ann_settings.allowed_path = tmp_path / "allowed.txt"
+        ann_settings.not_allowed_path = tmp_path / "not_allowed.txt"
+        ann_settings.reasoning_path = tmp_path / "reasoning.jsonl"
+        ann_settings.error_log_path = tmp_path / "malformed.log"
+
+        # 10 unlisted domains -> batches of 5 -> 2 prompts, the first empty.
+        df = pd.DataFrame({"domain": [f"d{i}" for i in range(10)]})
+        ann = Annotations(settings=ann_settings, llm=self._FirstBatchEmptyLLM(), input="topic")
+        out = ann.apply(df, annotations=[AnnotationType.DONOTCRAWL])
+
+        assert (tmp_path / "allowed.txt").exists(), \
+            "the surviving batch's classification was discarded"
+        assert "good" in (tmp_path / "allowed.txt").read_text()
+        assert "crawlable" in out.columns
+
+    def test_all_batches_empty_still_returns_df(self, ann_settings, tmp_path):
+        ann_settings.allowed_path = tmp_path / "allowed.txt"
+        ann_settings.not_allowed_path = tmp_path / "not_allowed.txt"
+        ann_settings.reasoning_path = tmp_path / "reasoning.jsonl"
+        ann_settings.error_log_path = tmp_path / "malformed.log"
+
+        class AllEmpty:
+            def chat_sync(self, prompts, params=None, **kw):
+                return [None] * len(prompts)
+
+        df = pd.DataFrame({"domain": ["a", "b"]})
+        ann = Annotations(settings=ann_settings, llm=AllEmpty(), input="t")
+        out = ann.apply(df, annotations=[AnnotationType.DONOTCRAWL])
+        assert len(out) == 2
+        assert not (tmp_path / "allowed.txt").exists()

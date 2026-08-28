@@ -25,7 +25,7 @@ def get_args():
                         help="Base name for output file (no extension)")
     parser.add_argument("--annotations",
                         nargs="*",  # Zero or more values allowed
-                        choices=["donotcrawl", "relevancy"],
+                        choices=["donotcrawl", "relevancy", "sub_categorization"],
                         default=None,
                         help="Optional annotations to apply. Choices: donotcrawl, relevancy"
                         )
@@ -44,11 +44,10 @@ def get_args():
         parser.error("--input_file should only be used when --mode=search")
     
     if args.recursion_depth is not None:
+        # The mode != "topic" check already covers "search"; a second branch for it
+        # was unreachable.
         if args.mode != "topic":
             parser.error("--recursion_depth is only allowed when --mode is 'topic'")
-        # Disallow recursion_depth in search mode
-        if args.mode == "search":
-            parser.error("--recursion_depth is not allowed when --mode is 'search'")
 
 
     if not args.perform_search and args.mode != 'search':
@@ -75,8 +74,9 @@ def get_user_args_dict(args):
         user_args["max_results_per_query"] = args.max_results_per_query
     if args.output_format is not None:
         user_args["output_format"] = args.output_format
-    if args.output_folder_name is not None:
-        user_args["output_folder_name"] = args.output_folder_name
+    # No `is not None` guard: argparse defaults this to "searchresults", so the
+    # condition was always true.
+    user_args["output_folder_name"] = args.output_folder_name
     if args.annotations is not None:
         user_args["annotations"] = args.annotations
     if args.input_file is not None:
