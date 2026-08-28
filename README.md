@@ -162,6 +162,8 @@ The FastAPI server exposes:
 - `GET /jobs/{id}/logs/storage` — Final logs from storage
 - `WS /ws/jobs/{id}/logs` — WebSocket live log stream
 - `GET /jobs/{id}/metrics/redis` — Live metrics
+- `GET /jobs/{id}/metrics/storage` — Final metrics from storage
+- `WS /ws/jobs/{id}/metrics` — WebSocket live metrics stream
 - `GET /jobs/{id}/download-zip` — Download URL for the results ZIP (presigned on S3, a direct route on local storage)
 - `GET /jobs/{id}/download-zip/archive` — The ZIP itself, built on demand for local storage
 - `GET /jobs/{id}/files` — List available output files
@@ -181,15 +183,16 @@ npm run build      # Production build
 
 Environment variables (set in `frontend/.env`):
 - `REACT_APP_API_URL` — Backend URL (default: `http://localhost:8000`)
-- `REACT_APP_API_KEY` — Optional API key if backend auth is enabled
+- `REACT_APP_API_KEY` — API key for the backend, if `API_KEY` is set. **Not a
+  secret: it is compiled into the public JS bundle** — see [Exposure](#exposure)
 
 ## Testing
 
 ```bash
-# Backend tests (235 tests)
+# Backend tests (278 tests)
 pytest --tb=short
 
-# Frontend tests (44 tests)
+# Frontend tests (50 tests)
 cd frontend && npx react-scripts test --watchAll=false
 ```
 
@@ -224,6 +227,19 @@ publishes port 8000 on all interfaces. On any machine reachable by others, set
 See [Known limitations](#known-limitations) for what setting `API_KEY` costs you
 in the UI.
 
+**`REACT_APP_API_KEY` is not a secret.** Create React App inlines every
+`REACT_APP_*` variable at build time, so the value ends up as a literal string in
+`frontend/build/static/js/main.*.js`. Anyone who can load the page — or read the
+built bundle, or pull the frontend image — can recover it, and it is the same key
+that authenticates every API route.
+
+That is acceptable for a local run, where the only person loading the page is
+you, and it is the intended use of this tool. It is not a way to protect a shared
+or public deployment: guarding the API from a browser needs credentials the
+browser never holds, such as a session cookie or a short-lived token minted
+server-side. No such mechanism exists here yet, so treat a reachable frontend as
+equivalent to publishing `API_KEY`.
+
 ### If LLM calls hang inside containers
 
 If your LLM or search endpoint is only reachable over a VPN, a tunnel MTU lower
@@ -240,16 +256,17 @@ For Docker Desktop, set the MTU in Settings → Docker Engine (`"mtu": 1380`).
 
 ## Known limitations
 
-**Text extraction runs on one core inside containers.** Extraction is CPU-bound
-Python, and the Celery worker's default `prefork` pool runs each task in a
-daemonic process, which is not permitted to start worker processes. The pipeline
-detects this and falls back to a thread pool, so runs complete correctly but the
-GIL serializes extraction and `MAX_EXTRACT_WORKERS` has little effect. Running the
-CLI (`python run.py`) is unaffected and uses all cores. Switching the worker to
-`--pool=threads` is not a fix on its own: `SearchPipeline.run` installs signal
-handlers, which raises `ValueError` off the main thread, and
-`POST /jobs/{id}/interrupt` depends on `revoke(terminate=True)`, which only
-`prefork` implements.
+**An interrupt during extraction can outlive the job on macOS.** Extraction runs in
+child processes so that a parser crash cannot take the worker down. On Linux the
+children are given `PR_SET_PDEATHSIG`, so they die with the worker when
+`POST /jobs/{id}/interrupt` revokes it with SIGKILL. macOS has no equivalent, so a
+child there keeps working until it finishes its current batch. Local development
+only; every container target is Linux.
+
+**A document that crashes the parser is skipped, not extracted.** trafilatura
+parses via libxml2, and a malformed document can segfault it. That now costs the
+one document — logged as `Extraction crashed on <url>` — instead of the whole run,
+but the document yields no text. The underlying parser crash is not fixed.
 
 **The frontend image serves IPv4 only.** nginx is configured with `listen 80`, so
 an IPv6-only network or an IPv6 service address cannot reach it. This is invisible
@@ -260,7 +277,7 @@ is left off by default; render the listen directive from a template if you need 
 **`API_KEY` breaks two things in the browser.** Browsers cannot attach headers to a
 WebSocket handshake or to a download opened in a new tab, and the UI sends none. So
 with a key set, live logs and metrics are rejected and the results ZIP download
-returns 403, while the rest of the UI keeps working.
+returns 401, while the rest of the UI keeps working.
 
 **Fresh checkouts start with an empty crawl policy cache.** The cache under
 `src/processing/crawl_policy/` is generated at runtime and deliberately not
@@ -270,11 +287,14 @@ LLM to classify more domains than later ones.
 ## Maintainers
 
 Data Scout is developed and maintained by **Eelaaf Zahid** and **Chirag Garg**, its main
-contributors. Please open an issue for bugs and feature requests.
+contributors — see [MAINTAINERS.md](MAINTAINERS.md). Please open an issue for bugs
+and feature requests, and [SECURITY.md](SECURITY.md) for vulnerabilities.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and PR process.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and PR
+process, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for the standards expected of
+participants. Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

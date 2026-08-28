@@ -1,46 +1,61 @@
-# Getting Started with Create React App
+# Data Scout frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React + TypeScript dashboard for submitting pipeline jobs and following them as
+they run: live logs, live metrics, and the output files a finished run produced.
 
-## Available Scripts
+The [root README](../README.md) is the source of truth for running the stack;
+this covers what is specific to working in `frontend/`.
 
-In the project directory, you can run:
+## Commands
 
-### `npm start`
+```bash
+npm install
+npm start                                          # dev server on :3000
+CI=true npx react-scripts test --watchAll=false     # tests, as CI runs them
+CI=true npx react-scripts build                     # production build
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+From the repo root, `make frontend` runs the dev server and `make build` does
+`npm install` plus a production build.
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+Do not run `npm run eject`. It is irreversible and would replace the pinned
+`react-scripts` setup that the Dockerfile builds against.
 
-### `npm test`
+## Configuration
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Set in `frontend/.env`:
 
-### `npm run build`
+- `REACT_APP_API_URL` — backend URL (default `http://localhost:8000`)
+- `REACT_APP_API_KEY` — the backend's `API_KEY`, if one is set. **Not a secret.**
+  Create React App inlines `REACT_APP_*` at build time, so this ends up as a
+  literal string in `build/static/js/main.*.js` and anyone who loads the page can
+  read it. See [Exposure](../README.md#exposure).
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Gotchas
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+**`react-scripts` is pinned at 5.0.1 and Create React App is deprecated** (Feb
+2025), so this will need replacing eventually — Vite is the usual destination.
+It does still work on current Node: verified compiling on Node 24, and the
+Dockerfile builds it on `node:18-alpine`. If a future Node release breaks the
+webpack 5 build, `NODE_OPTIONS=--openssl-legacy-provider` is the usual first
+thing to try.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+**`package-lock.json` is not committed** (`.gitignore`), so builds are not
+reproducible and the Dockerfile uses `npm install` rather than `npm ci`. Do not
+switch it to `npm ci` — it needs a lockfile that is not there.
 
-### `npm run eject`
+**Jest and webpack disagree about which files exist.** Jest's
+`moduleFileExtensions` ignore `tsconfig.json` while webpack's
+`resolve.extensions` do not, so tests can pass green while the production build
+is broken. Run the build, not just the tests, before opening a PR.
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+## Two limitations that look like frontend bugs
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Both are in the [root README](../README.md#known-limitations):
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+- With `API_KEY` set, the live log and metrics WebSockets are rejected and the
+  results ZIP download returns 401 — browsers cannot attach auth headers to a
+  WebSocket handshake or to a download opened in a new tab. The UI reports this
+  rather than retrying forever.
+- The frontend container serves IPv4 only (`listen 80`), which is invisible
+  behind a published port but unreachable on an IPv6-only network.

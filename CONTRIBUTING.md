@@ -15,7 +15,8 @@
    # Fill in at minimum: LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME
    ```
 
-3. **Start Redis** (required for API/job tests):
+3. **Start Redis** (needed to run the API and worker; the test suite does not
+   require it — every test stubs Redis out):
    ```bash
    redis-server
    ```
