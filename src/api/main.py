@@ -41,10 +41,14 @@ async def surface_server_errors(request: Request, call_next):
         return await call_next(request)
     except Exception as e:
         logging.getLogger("pipeline_logger").exception("Unhandled API error")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"{type(e).__name__}: {e}"},
+        # The exception type and text can name absolute paths, a Redis URL with
+        # credentials, or a raw S3 error body. The traceback is already in the log
+        # above, so withhold it here unless DEBUG_ERRORS is set.
+        detail = (
+            f"{type(e).__name__}: {e}" if config.debug_errors
+            else "Internal server error. The cause was written to the server log."
         )
+        return JSONResponse(status_code=500, content={"detail": detail})
 
 
 app.add_middleware(

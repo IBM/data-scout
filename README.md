@@ -116,6 +116,7 @@ All configuration is via environment variables (see `.env.example`). Key setting
 | `STORAGE_BACKEND` | `local` or `s3` | `local` |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
 | `API_KEY` | API auth key (empty = no auth) | |
+| `DEBUG_ERRORS` | Return the underlying exception in API errors. Leave off outside development — error text can include paths, Redis credentials and S3 bodies | `false` |
 
 ## CLI Usage
 

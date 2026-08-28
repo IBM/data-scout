@@ -44,6 +44,11 @@ class SearchConfig(BaseSettings):
 
     # API
     api_key: str = Field("", alias="API_KEY")
+    # Off by default: error text from this codebase can carry absolute paths, a
+    # Redis URL including credentials, and raw S3 error bodies. Turn it on in
+    # development to get the real cause into the HTTP response; the cause is
+    # written to the server log either way.
+    debug_errors: bool = Field(False, alias="DEBUG_ERRORS")
     cors_origins: list[str] = Field(default=["http://localhost:3000"], alias="CORS_ORIGINS")
 
     # File names

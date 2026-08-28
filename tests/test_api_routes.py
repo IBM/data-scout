@@ -2,6 +2,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
+from src.api import routes
+
 
 @pytest.fixture
 def mock_celery():
@@ -350,3 +352,34 @@ class TestHealth:
             client.app.state.api_key = ""
 
         assert response.status_code == 200
+
+
+class TestErrorDetailsAreNotLeaked:
+    """Route handlers used to interpolate exception text straight into `detail`,
+    which can carry absolute paths and a Redis URL with credentials. It is now
+    gated behind DEBUG_ERRORS."""
+
+    SECRET = "redis://:sup3rs3cret@10.0.0.5:6379/0"
+
+    def _failing_logs_request(self, client, mock_redis_client, debug):
+        mock_redis_client.hget.side_effect = lambda key, field: {
+            "storage_logs_filename": b"pipeline.log",
+            "storage_upload_folder": b"results/searchresults/j1",
+        }.get(field)
+        client.app.state.storage.read_file.side_effect = RuntimeError(f"boom {self.SECRET}")
+
+        with patch.object(routes._config, "debug_errors", debug):
+            return client.get("/jobs/j1/logs/storage")
+
+    def test_credentials_do_not_reach_the_client(self, client, mock_redis_client):
+        response = self._failing_logs_request(client, mock_redis_client, debug=False)
+
+        assert response.status_code == 500
+        assert "sup3rs3cret" not in response.text
+        assert "Failed to fetch log file" in response.text
+
+    def test_debug_errors_restores_the_cause(self, client, mock_redis_client):
+        response = self._failing_logs_request(client, mock_redis_client, debug=True)
+
+        assert response.status_code == 500
+        assert self.SECRET in response.text

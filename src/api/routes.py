@@ -31,6 +31,25 @@ def _tracker(job_id: str) -> JobTracker:
     return JobTracker(job_id, redis_url=_config.redis_url)
 
 
+def _safe_detail(message: str, exc: BaseException) -> str:
+    """Log the real cause, and return only what the client may see.
+
+    Exception text from this codebase carries absolute filesystem paths, Redis
+    URLs including credentials, and raw S3/boto error bodies. Returning it
+    verbatim was deliberate -- it is how the real cause got past the CORS layer
+    and into the UI -- and it is genuinely useful while developing, so it is kept
+    behind DEBUG_ERRORS rather than dropped.
+
+    Must be called from an `except` block: the cause is recorded with
+    logger.exception, so turning the flag off costs the client detail, never the
+    operator.
+    """
+    logger.exception(message)
+    if _config.debug_errors:
+        return f"{message}: {exc}"
+    return f"{message}. The cause was written to the server log."
+
+
 # A job whose tracked status is one of these has already been accounted for and
 # must not be relabelled from Celery's view of the task.
 _TERMINAL_STATUSES = {"completed", "failed", "interrupted"}
@@ -64,7 +83,7 @@ def submit_job(args: UserArgs):
         tracker.set_all(status="failed", progress="Could not queue job")
         raise HTTPException(
             status_code=503,
-            detail=f"Task queue unavailable, job was not queued: {e}",
+            detail=_safe_detail("Task queue unavailable, job was not queued", e),
         )
 
     tracker.set_all(status="queued", progress="Job queued")
@@ -115,7 +134,7 @@ def get_storage_logs(job_id: str, request: Request):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Log file not found in storage.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch log file: {str(e)}")
+        raise HTTPException(status_code=500, detail=_safe_detail("Failed to fetch log file", e))
 
     return {
         "job_id": job_id,
@@ -183,7 +202,7 @@ def get_storage_metrics(job_id: str, request: Request):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Metrics file not found in storage.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch metrics file: {str(e)}")
+        raise HTTPException(status_code=500, detail=_safe_detail("Failed to fetch metrics file", e))
 
     return {
         "job_id": job_id,
@@ -285,7 +304,7 @@ def get_zip_presigned_url(job_id: str, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to prepare zip download: {str(e)}")
+        raise HTTPException(status_code=500, detail=_safe_detail("Failed to prepare zip download", e))
 
 
 @router.get("/jobs/{job_id}/download-zip/archive", name="download_zip_archive")
@@ -296,7 +315,7 @@ def download_zip_archive(job_id: str, request: Request):
     try:
         zip_abs = _local_zip(tracker, storage)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to build zip archive: {str(e)}")
+        raise HTTPException(status_code=500, detail=_safe_detail("Failed to build zip archive", e))
 
     if zip_abs is None:
         raise HTTPException(status_code=404, detail="Zip file not available for this job.")
@@ -408,7 +427,7 @@ def view_file_content(
                 }
 
             except Exception as parquet_err:
-                raise HTTPException(status_code=500, detail=f"Failed to parse parquet file: {str(parquet_err)}")
+                raise HTTPException(status_code=500, detail=_safe_detail("Failed to parse parquet file", parquet_err))
 
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format.")
@@ -416,7 +435,7 @@ def view_file_content(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read {file_type} file: {str(e)}")
+        raise HTTPException(status_code=500, detail=_safe_detail(f"Failed to read {file_type} file", e))
 
 @router.post("/jobs/{job_id}/interrupt")
 def interrupt_job(job_id: str):
