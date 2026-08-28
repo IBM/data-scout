@@ -31,7 +31,11 @@ def client(mock_celery, mock_redis_client):
          patch("src.api.main.create_storage_backend") as mock_storage_factory, \
          patch("src.api.main.SearchConfig") as mock_config_cls:
 
+        # Both construction paths return the same fake: JobTracker builds its
+        # client via redis.Redis.from_url (so URL credentials and rediss:// are
+        # honoured), while a direct redis.Redis(...) call must keep working too.
         mock_redis_cls.return_value = mock_redis_client
+        mock_redis_cls.from_url.return_value = mock_redis_client
         mock_storage_factory.return_value = MagicMock()
 
         mock_config = MagicMock()
@@ -162,8 +166,11 @@ class TestInterruptJob:
         assert response.status_code == 404
 
     def test_interrupt_already_completed(self, client, mock_redis_client):
+        # status, not just task_id: a job that really did finish has a terminal
+        # tracked status, and that is what stops it being relabelled below.
         mock_redis_client.hget.side_effect = lambda key, field: {
             "task_id": b"celery-task-123",
+            "status": b"completed",
         }.get(field)
 
         with patch("src.api.routes.AsyncResult") as mock_async:
@@ -175,6 +182,67 @@ class TestInterruptJob:
             assert response.status_code == 200
             data = response.json()
             assert "cannot be interrupted" in data["message"]
+
+    def test_interrupt_does_not_relabel_a_job_that_already_finished(self, client, mock_redis_client):
+        """A recorded outcome wins over Celery's view of the task."""
+        mock_redis_client.hget.side_effect = lambda key, field: {
+            "task_id": b"celery-task-123",
+            "status": b"completed",
+        }.get(field)
+
+        with patch("src.api.routes.AsyncResult") as mock_async:
+            mock_result = MagicMock()
+            mock_result.state = "FAILURE"
+            mock_async.return_value = mock_result
+
+            response = client.post("/jobs/test-id/interrupt")
+            assert response.json()["status"] == "completed"
+
+        statuses = [
+            c.args[2] for c in mock_redis_client.hset.call_args_list
+            if len(c.args) > 2 and c.args[1] == "status"
+        ]
+        assert statuses == [], f"a finished job was relabelled to {statuses}"
+
+
+class TestInterruptReconcilesStaleStatus:
+    """A worker killed mid-task (container restart, SIGKILL, OOM) never writes a
+    terminal status, so the job hash stays "running" while Celery reports the
+    task as finished. The interrupt endpoint used to return 200 here without
+    touching the hash, so the dashboard showed the job running forever and every
+    repeated interrupt reported success and changed nothing."""
+
+    def _interrupt_with(self, client, mock_redis_client, celery_state):
+        mock_redis_client.hget.side_effect = lambda key, field: {
+            "task_id": b"celery-task-123",
+            "status": b"running",
+        }.get(field)
+
+        with patch("src.api.routes.AsyncResult") as mock_async:
+            mock_result = MagicMock()
+            mock_result.state = celery_state
+            mock_async.return_value = mock_result
+
+            response = client.post("/jobs/test-id/interrupt")
+
+        written = [
+            c.args[2] for c in mock_redis_client.hset.call_args_list
+            if len(c.args) > 2 and c.args[1] == "status"
+        ]
+        return response, written
+
+    def test_lost_worker_is_marked_failed(self, client, mock_redis_client):
+        response, written = self._interrupt_with(client, mock_redis_client, "FAILURE")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "failed"
+        assert "failed" in written, "job hash still says running"
+
+    def test_revoked_task_is_marked_interrupted(self, client, mock_redis_client):
+        response, written = self._interrupt_with(client, mock_redis_client, "REVOKED")
+
+        assert response.json()["status"] == "interrupted"
+        assert "interrupted" in written
 
 
 class TestZipDownload:

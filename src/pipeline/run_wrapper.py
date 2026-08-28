@@ -11,7 +11,7 @@ def run_pipeline_from_args_dict(user_args: dict, run_id: Optional[str] = None, p
     validated_args = UserArgs(**user_args)
     load_dotenv()
     config = SearchConfig()
-    pipeline = SearchPipeline(user_config=validated_args.dict(exclude_unset=True), settings=config, run_id=run_id, progress_callback=progress_callback, metrics_callback=metrics_callback)
+    pipeline = SearchPipeline(user_config=validated_args.model_dump(exclude_unset=True), settings=config, run_id=run_id, progress_callback=progress_callback, metrics_callback=metrics_callback)
 
     if tracker:
         tracker.set_storage_upload_folder(pipeline.storage_upload_prefix)

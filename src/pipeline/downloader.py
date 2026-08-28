@@ -45,9 +45,17 @@ class DocumentDownloader:
         fallback rather than a failed run.
         """
         if multiprocessing.current_process().daemon:
+            # debug, not info: info reaches the job's progress feed, where this
+            # read as a failure ("cannot start worker processes") in the middle
+            # of a healthy run. The feed already says "Extracting text...", and
+            # the pool choice changes only the speed, not the outcome. Note the
+            # run logger is set up at INFO with no override, so this is dropped
+            # from the console and run log as well; raise setup_logger's
+            # log_level to DEBUG to see it while diagnosing slow extraction.
             self.notify(
                 "Extracting with a thread pool: this process is daemonic "
-                "(Celery prefork) and cannot start worker processes"
+                "(Celery prefork) and cannot start worker processes",
+                level="debug",
             )
             return ThreadPoolExecutor(max_workers=max_workers)
 

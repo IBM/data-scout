@@ -40,6 +40,20 @@ class TestExtractExecutorChoice:
         assert downloader.notify.called
         assert "thread pool" in downloader.notify.call_args[0][0]
 
+    def test_fallback_is_logged_at_debug_not_shown_to_the_user(self):
+        """Only `info` reaches the job's progress feed. This message named a
+        daemonic process that "cannot start worker processes", which read as a
+        failure mid-run even though the fallback is expected under Celery
+        prefork and the run succeeds."""
+        downloader = _downloader()
+        with patch(
+            "src.pipeline.downloader.multiprocessing.current_process",
+            return_value=SimpleNamespace(daemon=True),
+        ):
+            downloader._extract_executor(2).shutdown()
+
+        assert downloader.notify.call_args.kwargs.get("level") == "debug"
+
 
 def _extract_in_daemonic_child(queue):
     """Runs in a daemonic child, as a Celery prefork task does."""

@@ -2,16 +2,18 @@ import redis
 from datetime import datetime, timezone
 from typing import Optional
 import json
-from urllib.parse import urlparse
 
 
 def _redis_from_url(redis_url: str) -> redis.Redis:
-    parsed = urlparse(redis_url)
-    return redis.Redis(
-        host=parsed.hostname or "localhost",
-        port=parsed.port or 6379,
-        db=int(parsed.path.lstrip("/") or "0"),
-    )
+    """Connect from a URL, delegating to redis-py's own parser.
+
+    Hand-parsing only host/port/db silently dropped any username/password in the
+    URL -- so `redis://:pw@host/0` connected *unauthenticated* -- and turned
+    `rediss://` into a plaintext connection. Celery parses the same URL
+    correctly with its own code, so on an authenticated or TLS Redis the worker
+    connected while the tracker did not.
+    """
+    return redis.Redis.from_url(redis_url)
 
 
 class JobTracker:

@@ -207,6 +207,9 @@ export default function JobMetrics({ jobId, status }: JobMetricsProps) {
     const isDone = ['completed', 'failed', 'interrupted'].includes(status.toLowerCase());
     let ws: WebSocket | null = null;
     let retryTimeout: ReturnType<typeof setTimeout>;
+    // See JobDetail: onclose runs after cleanup, so an unguarded retry here
+    // outlived the component.
+    let cancelled = false;
 
     const fetchCachedMetrics = async () => {
       try {
@@ -220,7 +223,7 @@ export default function JobMetrics({ jobId, status }: JobMetricsProps) {
     };
 
     const connectWebSocket = () => {
-      if (isDone) return; // Don't open WebSocket if job is done
+      if (isDone || cancelled) return; // Don't open WebSocket if job is done
 
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
       const wsUrl = apiUrl.replace(/^http/, 'ws');
@@ -246,11 +249,16 @@ export default function JobMetrics({ jobId, status }: JobMetricsProps) {
         setMetricsError('Metrics WebSocket error occurred. Retrying...');
       };
 
-      ws.onclose = () => {
-        console.log(`Metrics WebSocket closed for job ${jobId}.`);
-        if (!isDone) {
-          retryTimeout = setTimeout(connectWebSocket, 5000);
+      ws.onclose = (event) => {
+        if (cancelled || isDone) return;
+        if (event.code === 1008) {
+          setMetricsError(
+            'Live metrics are unavailable: the API rejected the WebSocket ' +
+            '(API_KEY is set, and browsers cannot send auth headers on a handshake).'
+          );
+          return;
         }
+        retryTimeout = setTimeout(connectWebSocket, 5000);
       };
     };
 
@@ -260,8 +268,9 @@ export default function JobMetrics({ jobId, status }: JobMetricsProps) {
     }
 
     return () => {
-      if (ws) ws.close();
+      cancelled = true;
       clearTimeout(retryTimeout);
+      if (ws) ws.close();
       wsMetricsRef.current = null;
     };
   }, [jobId, status]);

@@ -23,9 +23,21 @@ class QueryGenerator:
     def generate_queries(self, input_text: str, mode: str, template_key: str = "query", context: list = None):
         prompt = self.format_prompt(template_key, input_text, context)
         responses = self.llm.chat_sync([prompt], params=self.settings.generation_params[mode])
-        response = responses[0]
-        queries = split_queries(response)
-        return queries
+        response = responses[0] if responses else None
+
+        # chat_sync returns None for a prompt once its retries are exhausted, and
+        # this is the first step of query/topic/keyword mode -- so an unreachable
+        # endpoint, a bad key or a wrong model name used to surface here as
+        # `AttributeError: 'NoneType' has no attribute 'splitlines'` from inside
+        # split_queries. Fail with the actual cause instead.
+        if not response:
+            raise RuntimeError(
+                "The LLM returned no response for the initial "
+                f"{mode!r} prompt. Check LLM_BASE_URL, LLM_API_KEY and "
+                "LLM_MODEL_NAME, and see the run log for the per-attempt errors."
+            )
+
+        return split_queries(response)
 
     def generate_queries_batch(self, nodes: list[TopicNode], template_key: str, mode: str) -> list[tuple[TopicNode, list[str]]]:
         prompts = [self.format_prompt(template_key, node.value, node.path) for node in nodes]

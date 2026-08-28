@@ -130,20 +130,23 @@ export default function JobDetail({ jobId, onBack }: JobDetailProps) {
     const isDone = ['completed', 'failed', 'interrupted'].includes(status.toLowerCase());
     let ws: WebSocket | null = null;
     let retryTimeout: ReturnType<typeof setTimeout>;
+    // `onclose` fires asynchronously, *after* this effect's cleanup has already
+    // run and cleared retryTimeout -- so scheduling the retry unconditionally
+    // left a socket reconnecting forever once the user navigated away.
+    let cancelled = false;
 
     const connectWebSocket = () => {
+        if (cancelled) return;
         const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
         const wsUrl = apiUrl.replace(/^http/, 'ws');
         ws = new WebSocket(`${wsUrl}/ws/jobs/${jobId}/logs`);
         wsLogRef.current = ws;
 
         ws.onopen = () => {
-            console.log(`WebSocket connected for job ${jobId}`);
             setWsError('');
         };
 
         ws.onmessage = (event) => {
-            console.log('Log message received:', event.data);
             setLogs((prevLogs) => prevLogs + event.data + '\n');
         };
 
@@ -152,11 +155,21 @@ export default function JobDetail({ jobId, onBack }: JobDetailProps) {
             setWsError('WebSocket error occurred. Retrying...');
         };
 
-        ws.onclose = () => {
-            console.log(`WebSocket closed for job ${jobId}. Reconnecting in 5 seconds...`);
-            retryTimeout = setTimeout(() => {
-                connectWebSocket();
-            }, 5000);
+        ws.onclose = (event) => {
+            if (cancelled) return;
+            // 1008 is the policy violation the API sends when API_KEY is set and
+            // the handshake carried no key. A browser cannot attach headers to a
+            // WebSocket, so retrying can never succeed -- reconnecting every 5s
+            // forever just hid the real cause.
+            if (event.code === 1008) {
+                setWsError(
+                    'Live logs are unavailable: the API rejected the WebSocket (API_KEY is set, ' +
+                    'and browsers cannot send auth headers on a WebSocket handshake). ' +
+                    'Logs will still load once the job finishes.'
+                );
+                return;
+            }
+            retryTimeout = setTimeout(connectWebSocket, 5000);
         };
     };
 
@@ -202,8 +215,9 @@ export default function JobDetail({ jobId, onBack }: JobDetailProps) {
     }
 
     return () => {
-        if (ws) ws.close();
+        cancelled = true;
         clearTimeout(retryTimeout);
+        if (ws) ws.close();
         wsLogRef.current = null;
     };
   }, [jobId, status]);

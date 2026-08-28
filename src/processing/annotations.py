@@ -65,8 +65,14 @@ class Annotations:
                 prompts.append(prompt)
 
             responses = self.llm.chat_sync(prompts, params=self.settings.generation_params["crawlable"])
-            if not responses or not responses[0]:
-                self.logger.warning(f"[!] No response from LLM for unlisted domains: {responses}")
+
+            # Domains are classified in batches of 5, so a run with 50 unlisted
+            # domains makes 10 calls. Gating on responses[0] alone threw away all
+            # ten batches whenever the *first* came back empty; keep whichever
+            # ones did answer.
+            responses = [r for r in (responses or []) if r]
+            if not responses:
+                self.logger.warning("[!] No usable response from LLM for unlisted domains")
                 return df
 
             reasoning_lines = []

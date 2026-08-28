@@ -30,6 +30,20 @@ _config = SearchConfig()
 def _tracker(job_id: str) -> JobTracker:
     return JobTracker(job_id, redis_url=_config.redis_url)
 
+
+# A job whose tracked status is one of these has already been accounted for and
+# must not be relabelled from Celery's view of the task.
+_TERMINAL_STATUSES = {"completed", "failed", "interrupted"}
+
+# How a terminal Celery task state reads as a job status. REVOKED is what a
+# successful interrupt produces; FAILURE covers both a genuine exception and a
+# worker killed mid-task (WorkerLostError).
+_CELERY_STATE_TO_STATUS = {
+    "SUCCESS": "completed",
+    "FAILURE": "failed",
+    "REVOKED": "interrupted",
+}
+
 @router.get("/jobs/{job_id}")
 def get_job_details(job_id: str):
     tracker = _tracker(job_id)
@@ -424,9 +438,38 @@ def interrupt_job(job_id: str):
         tracker.set_progress("Job was interrupted by user.")
 
         return {"job_id": job_id, "status": "interrupted", "message": "Job interrupt signal sent successfully."}
-    else:
+    # The task is in a terminal Celery state, so there is nothing left to revoke.
+    # The tracked status can still say "running" though: nothing writes a
+    # terminal status when a worker dies mid-task (container restart, SIGKILL,
+    # OOM), so the job hash keeps the status it had when the worker vanished.
+    # This branch used to return 200 without touching the hash, which left the
+    # dashboard showing the job as running forever while every repeated
+    # interrupt reported success and changed nothing. Reconcile instead.
+    tracked_status = tracker.redis.hget(tracker.key, "status")
+    tracked_status = tracked_status.decode() if isinstance(tracked_status, bytes) else tracked_status
+    reconciled = _CELERY_STATE_TO_STATUS.get(result.state)
+
+    if reconciled and tracked_status not in _TERMINAL_STATUSES:
+        app_logger.info(
+            f"Job {job_id} is tracked as '{tracked_status}' but task {task_id} is "
+            f"{result.state}; reconciling to '{reconciled}'"
+        )
+        tracker.set_status(reconciled)
+        tracker.set_progress(
+            f"Job stopped without recording an outcome (task state {result.state}); "
+            f"marked as {reconciled}."
+        )
         return {
             "job_id": job_id,
-            "status": result.state.lower(),
-            "message": f"Job is already in state '{result.state}', cannot be interrupted."
+            "status": reconciled,
+            "message": (
+                f"Job was no longer running (task state {result.state}). "
+                f"Its status was stale and has been corrected to '{reconciled}'."
+            ),
         }
+
+    return {
+        "job_id": job_id,
+        "status": tracked_status or result.state.lower(),
+        "message": f"Job is already in state '{result.state}', cannot be interrupted."
+    }

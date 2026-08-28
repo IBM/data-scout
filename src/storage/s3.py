@@ -76,8 +76,38 @@ class S3StorageBackend:
         file_infos = self._s3fs.get_file_info(selector)
         return [fi.path for fi in file_infos if fi.type == FileType.File]
 
-    def generate_presigned_url(self, remote_path: str, expires_in: int = 900) -> Optional[str]:
+    def _split_bucket_key(self, remote_path: str) -> tuple[str, str]:
+        """Split a bucket-qualified remote path into (bucket, key).
+
+        Every path in this class is bucket-qualified, because pyarrow's
+        S3FileSystem addresses objects as "bucket/key" -- so the prefix handed in
+        (STORAGE_UPLOAD_DIR/output_base/run_id) must begin with the bucket name.
+        That convention is load-bearing and is kept here.
+
+        What was broken is that STORAGE_BUCKET was accepted, documented in
+        .env.example, and then never read: the bucket came solely from the first
+        path segment. Setting STORAGE_BUCKET=my-bucket with the default
+        STORAGE_UPLOAD_DIR=results silently addressed a bucket named "results".
+        When STORAGE_BUCKET is set it now wins, and a path already carrying it is
+        not double-prefixed.
+        """
+        if self.bucket:
+            prefix = f"{self.bucket}/"
+            if remote_path == self.bucket:
+                return self.bucket, ""
+            if remote_path.startswith(prefix):
+                return self.bucket, remote_path[len(prefix):]
+            return self.bucket, remote_path.lstrip("/")
+
+        # No STORAGE_BUCKET configured: fall back to the historical behaviour of
+        # treating the first path segment as the bucket.
+        if "/" not in remote_path:
+            return remote_path, ""
         bucket, key = remote_path.split("/", 1)
+        return bucket, key
+
+    def generate_presigned_url(self, remote_path: str, expires_in: int = 900) -> Optional[str]:
+        bucket, key = self._split_bucket_key(remote_path)
         return self._boto_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},
