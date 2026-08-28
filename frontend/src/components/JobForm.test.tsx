@@ -5,7 +5,13 @@ import { MemoryRouter } from "react-router-dom";
 import JobForm from "./JobForm";
 import * as jobApi from "../api/JobApi";
 
-jest.mock("../api/JobApi");
+// Only submitJob is stubbed: apiErrorMessage is the code under test for the
+// error path, and an auto-mocked version returns undefined, which silently
+// swallows the alert this suite asserts on.
+jest.mock("../api/JobApi", () => ({
+  ...jest.requireActual("../api/JobApi"),
+  submitJob: jest.fn(),
+}));
 
 const mockedSubmitJob = jobApi.submitJob as jest.MockedFunction<typeof jobApi.submitJob>;
 

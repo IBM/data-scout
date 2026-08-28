@@ -127,6 +127,12 @@ class JobTracker:
     def set_storage_upload_folder(self, path: str):
         self.redis.hset(self.key, "storage_upload_folder", path)
 
+    def get_storage_upload_folder(self) -> Optional[str]:
+        folder = self.redis.hget(self.key, "storage_upload_folder")
+        if not folder:
+            return None
+        return folder.decode() if isinstance(folder, bytes) else folder
+
     def set_storage_filename(self, file_type: str, filename: str):
         if file_type not in {"logs", "metrics", "zip", "results", "topics"}:
             raise ValueError("Invalid file_type. Must be one of: 'logs', 'metrics', 'zip', 'results', 'topics'.")

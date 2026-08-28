@@ -12,7 +12,10 @@ def create_storage_backend(config) -> StorageBackend:
             region=config.storage_region,
             bucket=config.storage_bucket,
         )
-    return LocalStorageBackend(base_dir=config.storage_upload_dir)
+    # Rooted at the working directory: the prefixes stored per job are already
+    # relative to it (see SearchPipeline._prepare_output_folder), so passing
+    # storage_upload_dir here would prepend that segment a second time.
+    return LocalStorageBackend()
 
 
 __all__ = ["StorageBackend", "S3StorageBackend", "LocalStorageBackend", "create_storage_backend"]

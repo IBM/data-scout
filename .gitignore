@@ -27,7 +27,14 @@ notes.txt
 results/
 *.parquet
 *.jsonl
-!src/processing/crawl_policy/reasoning.jsonl
+
+# Crawl policy cache. Generated at runtime, never shipped: reasoning.jsonl
+# records the domains a run searched, so committing it would publish the
+# operator's search history.
+src/processing/crawl_policy/allowed.txt
+src/processing/crawl_policy/not_allowed.txt
+src/processing/crawl_policy/reasoning.jsonl
+src/processing/crawl_policy/malformed_lines.log
 
 # Redis
 dump.rdb

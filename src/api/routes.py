@@ -1,15 +1,21 @@
 from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi.responses import FileResponse
+from pathlib import Path
+from typing import Optional
 from uuid import uuid4
 from src.job_tracking.job_tracker import JobTracker
 from src.models import UserArgs
 from .tasks import run_pipeline_task
 from celery.result import AsyncResult
+from kombu.exceptions import OperationalError
+from redis.exceptions import ConnectionError as RedisConnectionError
 from src.api.celery_worker import celery_app
 from fastapi import WebSocket, WebSocketDisconnect
 from src.config import SearchConfig
 import asyncio
 import redis.asyncio as aioredis
 from src.processing.utils import get_default_logger
+from src.processing.file_ops import zip_folder
 import json
 import logging
 
@@ -35,7 +41,17 @@ def submit_job(args: UserArgs):
     tracker = _tracker(job_id)
     tracker.set_job_args(args.model_dump())
 
-    celery_task = run_pipeline_task.delay(job_id, args.model_dump())
+    try:
+        celery_task = run_pipeline_task.delay(job_id, args.model_dump())
+    except (OperationalError, RedisConnectionError, RuntimeError) as e:
+        # An unreachable broker/result backend otherwise surfaces as an
+        # unhandled 500 after a long retry loop, which tells the operator
+        # nothing about the actual cause.
+        tracker.set_all(status="failed", progress="Could not queue job")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Task queue unavailable, job was not queued: {e}",
+        )
 
     tracker.set_all(status="queued", progress="Job queued")
     tracker.redis.hset(tracker.key, "task_id", celery_task.id)
@@ -193,6 +209,39 @@ async def websocket_job_metrics(websocket: WebSocket, job_id: str):
         await pubsub.close()
         await redis_client.close()
 
+def _local_zip(tracker, storage) -> Optional[Path]:
+    """Path to a run's zip on a filesystem-backed store, building it if needed.
+
+    The pipeline only zips a run when it uploads one, so for local storage the
+    archive is created here on first request instead. Returns None when the
+    backend keeps files off-host (presigned download applies) or when the run
+    folder is gone.
+    """
+    resolve = getattr(storage, "local_path", None)
+    if resolve is None:
+        return None
+
+    zip_rel = tracker.get_storage_file_path("zip")
+    folder_rel = tracker.get_storage_upload_folder()
+    if not zip_rel or not folder_rel:
+        return None
+
+    zip_abs = resolve(zip_rel)
+    if zip_abs is None:
+        return None
+    if zip_abs.is_file():
+        return zip_abs
+
+    folder_abs = resolve(folder_rel)
+    if folder_abs is None or not folder_abs.is_dir():
+        return None
+
+    # zip_folder skips the archive it is writing, so the run folder can be both
+    # source and destination.
+    created = zip_folder(str(folder_abs), str(folder_abs), zip_abs.name)
+    return Path(created) if created else None
+
+
 @router.get("/jobs/{job_id}/download-zip")
 def get_zip_presigned_url(job_id: str, request: Request):
     tracker = _tracker(job_id)
@@ -205,15 +254,44 @@ def get_zip_presigned_url(job_id: str, request: Request):
         storage = request.app.state.storage
         presigned_url = storage.generate_presigned_url(zip_path)
 
-        if not presigned_url:
-            raise HTTPException(status_code=501, detail="Presigned URLs not supported by current storage backend.")
+        if presigned_url:
+            return {"job_id": job_id, "download_url": presigned_url}
 
-        return {"job_id": job_id, "download_url": presigned_url}
+        # Local storage has no presigned URLs, so hand back our own download
+        # route. Built absolute because the browser opens it directly, and the
+        # UI is served from a different origin than the API.
+        if _local_zip(tracker, storage) is not None:
+            return {
+                "job_id": job_id,
+                "download_url": str(request.url_for("download_zip_archive", job_id=job_id)),
+            }
+
+        raise HTTPException(status_code=404, detail="Zip file not available for this job.")
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate presigned URL: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to prepare zip download: {str(e)}")
+
+
+@router.get("/jobs/{job_id}/download-zip/archive", name="download_zip_archive")
+def download_zip_archive(job_id: str, request: Request):
+    tracker = _tracker(job_id)
+    storage = request.app.state.storage
+
+    try:
+        zip_abs = _local_zip(tracker, storage)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build zip archive: {str(e)}")
+
+    if zip_abs is None:
+        raise HTTPException(status_code=404, detail="Zip file not available for this job.")
+
+    return FileResponse(
+        path=zip_abs,
+        media_type="application/zip",
+        filename=zip_abs.name,
+    )
 
 @router.get("/jobs/{job_id}/files")
 def list_available_files(job_id: str, request: Request):

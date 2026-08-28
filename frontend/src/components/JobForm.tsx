@@ -18,7 +18,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import ModeSelector from "./ModeSelector";
 import { UserArgs, defaultUserArgs, Annotation } from "../models/Models";
-import { submitJob } from "../api/JobApi";
+import { submitJob, apiErrorMessage } from "../api/JobApi";
 import AnnotationsSelector from "./AnnotationsSelector";
 import SearchOptions from "./SearchOptions";
 // import ModeSelector from "./ModeSelector";  // no longer needed
@@ -69,7 +69,7 @@ export default function JobForm() {
         // Navigate to job detail page after submission
         navigate(`/job/${data.job_id}`);
     } catch (err: any) {
-        setResult({ error: err.message || "Submission failed" });
+        setResult({ error: apiErrorMessage(err) });
     } finally {
         setSubmitting(false);
     }

@@ -21,6 +21,13 @@ services:
         condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379/0
+      # The API enqueues Celery tasks, so it needs the broker/backend URLs too.
+      # Celery does not read REDIS_URL; without these it falls back to
+      # redis://localhost:6379/0 and job submission fails with a 500.
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - results:/app/results
 
   worker:
     build:
@@ -34,6 +41,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - results:/app/results
 
   frontend:
     build:
@@ -43,3 +52,9 @@ services:
       - "3000:80"
     depends_on:
       - api
+
+volumes:
+  # Shared so the API can serve the result files the worker writes when
+  # STORAGE_BACKEND=local. Without this each container has its own /app/results
+  # and the file listing/view/download endpoints return nothing.
+  results:

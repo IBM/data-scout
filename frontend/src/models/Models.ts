@@ -6,8 +6,10 @@ export interface JobSummary {
   job_id: string;
   mode: string;
   input: string;
-  status: string;
-  progress?: string;
+  // Null until the pipeline records a status; the list endpoint returns the
+  // job as soon as its args are stored.
+  status: string | null;
+  progress?: string | null;
   created_at?: string;
   error?: string | null;
 }

@@ -36,8 +36,13 @@ class Annotations:
     def _apply_donotcrawl(self, df: pd.DataFrame) -> pd.DataFrame:
 
         def load_domains(path):
+            # The crawl policy is a cache, not shipped data: it starts empty on a
+            # fresh checkout and fills in as domains get classified. A missing
+            # file means "nothing cached yet", so every domain is treated as
+            # unlisted and classified below.
             if not path.exists():
-                raise Exception(f"Failed to load crawl policy: {path} does not exist")
+                self.logger.info(f"No crawl policy cache at {path} yet; starting empty")
+                return set()
             with open(path, "r", encoding="utf-8") as f:
                 return set(line.strip().lower() for line in f if line.strip())
 

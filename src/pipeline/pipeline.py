@@ -122,10 +122,16 @@ class SearchPipeline:
         output_path = base_path / self.run_id
         output_path.mkdir(parents=True, exist_ok=False)
 
+        # Recorded whether or not we upload. This prefix is how the API addresses
+        # a run's files, so leaving it empty when uploading is off made the file
+        # listing, viewing and download endpoints report every file as missing
+        # even though the run folder was sitting right here. With uploads off it
+        # resolves to this same working folder; with uploads on it names the
+        # published copy.
         if getattr(self.settings, "storage_upload", False):
             self.storage_upload_prefix = str(Path(self.settings.storage_upload_dir) / self.output_base / self.run_id)
         else:
-            self.storage_upload_prefix = ""
+            self.storage_upload_prefix = str(output_path)
 
         return output_path
 
@@ -287,6 +293,7 @@ class SearchPipeline:
 
         timing = {}
         queries = []
+        failure = None
 
         try:
             # === Initial Query Generation ===
@@ -369,8 +376,15 @@ class SearchPipeline:
                 timing.update(search_timing)
 
         except Exception as e:
+            failure = e
             self.notify(f"Pipeline failed with error: {str(e)}", level="error")
             self.save_metrics({"error": str(e)})
+            # Re-raised so the caller can act on it. Swallowing it here left
+            # run_pipeline_task marking the job "completed" while metrics.json
+            # held the error, so a run that produced no results was
+            # indistinguishable from a successful one. The finally block below
+            # still writes metrics and uploads whatever did get produced.
+            raise
 
         finally:
             if self.settings.storage_upload:
@@ -396,4 +410,10 @@ class SearchPipeline:
             }
 
             self.save_metrics(overall_metrics)
-            self.notify(f"Pipeline run completed in {end_time - start_time:.2f} seconds")
+            if failure is None:
+                self.notify(f"Pipeline run completed in {end_time - start_time:.2f} seconds")
+            else:
+                self.notify(
+                    f"Pipeline run failed after {end_time - start_time:.2f} seconds: {failure}",
+                    level="error",
+                )

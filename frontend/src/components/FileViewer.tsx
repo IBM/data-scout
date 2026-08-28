@@ -28,7 +28,7 @@ import {
   Chip,
   Stack,
 } from "@mui/material";
-import { listAvailableFiles, viewFileContent } from "../api/JobApi";
+import { listAvailableFiles, viewFileContent, apiErrorMessage } from "../api/JobApi";
 
 interface FileViewerProps {
   jobId: string;
@@ -117,6 +117,11 @@ export default function FileViewer({ jobId }: FileViewerProps) {
   useEffect(() => {
     if (!selectedFile) return;
 
+    // Selecting another file supersedes this request. Without this guard a slow
+    // response for the file you just navigated away from lands last and wins,
+    // leaving the table showing one file's rows under the other file's name.
+    let superseded = false;
+
     async function fetchFileContent() {
       setLoading(true);
       setError(null);
@@ -127,6 +132,7 @@ export default function FileViewer({ jobId }: FileViewerProps) {
           0, // always fetch first page from API, we'll paginate locally filtered data
           10000 // fetch a large chunk for local filtering & pagination; adjust as needed or implement backend paging
         );
+        if (superseded) return;
 
         setAllRows(data.rows);
         setFilteredRows(data.rows);
@@ -134,13 +140,18 @@ export default function FileViewer({ jobId }: FileViewerProps) {
         setSchema(newSchema);
         setSelectedColumns(newSchema);
         setOffset(0);
-      } catch {
-        setError("Failed to load file content.");
+      } catch (e) {
+        if (superseded) return;
+        setError(`Failed to load file content: ${apiErrorMessage(e)}`);
       } finally {
-        setLoading(false);
+        if (!superseded) setLoading(false);
       }
     }
     fetchFileContent();
+
+    return () => {
+      superseded = true;
+    };
   }, [jobId, selectedFile]);
 
   // Pagination - this is local pagination of filteredRows

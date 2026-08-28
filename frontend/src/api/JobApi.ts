@@ -11,6 +11,26 @@ const api = axios.create({
   headers,
 });
 
+/**
+ * Turn an axios failure into something an operator can act on. The API reports
+ * real causes in `detail`; axios only ever exposes "Request failed with status
+ * code N" via `message`, and reduces a request that got no response at all to a
+ * bare "Network Error" with no mention of which host was unreachable.
+ */
+export function apiErrorMessage(err: any): string {
+  const detail = err?.response?.data?.detail;
+  if (detail) {
+    return typeof detail === "string" ? detail : JSON.stringify(detail);
+  }
+  if (err?.response) {
+    return `${err.response.status} ${err.response.statusText || ""}`.trim();
+  }
+  if (err?.request) {
+    return `No response from API at ${api.defaults.baseURL} — check that it is running and reachable.`;
+  }
+  return err?.message || "Request failed";
+}
+
 export async function submitJob(args: UserArgs): Promise<{ job_id: string; status: string }> {
   const response = await api.post("/jobs/", args);
   return response.data;

@@ -1,3 +1,4 @@
+import multiprocessing
 import time
 import pandas as pd
 from tqdm import tqdm
@@ -32,6 +33,26 @@ class DocumentDownloader:
         except Exception as e:
             return i, "", f"Error: {str(e)}"
 
+    def _extract_executor(self, max_workers: int):
+        """Pick a pool that can actually run here.
+
+        Extraction is CPU-bound, so processes are preferred. But a Celery
+        prefork worker executes tasks in a *daemonic* child process, and Python
+        refuses to let those start children of their own -- a process pool there
+        raises "daemonic processes are not allowed to have children" and takes
+        the whole run down after the documents have already been downloaded.
+        Threads are slower under the GIL but always available, so they are the
+        fallback rather than a failed run.
+        """
+        if multiprocessing.current_process().daemon:
+            self.notify(
+                "Extracting with a thread pool: this process is daemonic "
+                "(Celery prefork) and cannot start worker processes"
+            )
+            return ThreadPoolExecutor(max_workers=max_workers)
+
+        return ProcessPoolExecutor(max_workers=max_workers)
+
     def download_and_extract_texts(self, df: pd.DataFrame):
         links = df["link"].fillna("").to_list()
         max_download_workers = self.settings.max_download_workers
@@ -62,7 +83,7 @@ class DocumentDownloader:
         texts = [None] * len(contents)
         extract_status = [""] * len(contents)
 
-        with ProcessPoolExecutor(max_workers=max_extract_workers) as executor:
+        with self._extract_executor(max_extract_workers) as executor:
             futures = [
                 executor.submit(self._safe_extract, i, links[i], contents[i])
                 for i in range(len(contents))

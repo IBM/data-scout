@@ -20,7 +20,8 @@ import {
     interruptJob,
     getStorageLogs,
     getRedisCachedLogs,
-    getJobZipDownloadUrl
+    getJobZipDownloadUrl,
+    apiErrorMessage
 } from '../api/JobApi';
 import { JobDetails } from '../models/Models';
 import JobMetrics from './JobMetrics';
@@ -56,7 +57,7 @@ export default function JobDetail({ jobId, onBack }: JobDetailProps) {
         }
     } catch (e) {
         console.error('Failed to fetch download URL:', e);
-        setError('Failed to fetch download URL');
+        setError(`Download failed: ${apiErrorMessage(e)}`);
     }
   };
 

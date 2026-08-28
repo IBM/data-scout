@@ -57,6 +57,9 @@ def append_lines_to_file(path: Path, lines: list[str]):
     Creates the file if it doesn't exist.
     """
     if not path.exists():
+        # The crawl policy cache is gitignored, so on a fresh checkout its
+        # directory does not exist either and a bare touch() would raise.
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
     ensure_ends_with_newline(path)

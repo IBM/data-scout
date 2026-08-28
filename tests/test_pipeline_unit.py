@@ -82,6 +82,21 @@ class TestPipelineInit:
         assert pipeline.mode == "query"
         assert pipeline.input == "test topic"
 
+    def test_records_a_storage_prefix_without_uploads(self, pipeline):
+        """The API addresses a run's files by this prefix, so it has to point
+        somewhere even when storage_upload is off -- otherwise the file listing
+        and viewing endpoints report every output as missing."""
+        assert pipeline.storage_upload_prefix == str(pipeline.output_folder)
+
+    def test_storage_prefix_resolves_through_the_local_backend(self, pipeline):
+        from src.storage.local import LocalStorageBackend
+
+        backend = LocalStorageBackend()
+        prefix = pipeline.storage_upload_prefix
+
+        info = backend.get_file_info(f"{prefix}/run_config.json")
+        assert info is not None and info["size_bytes"] > 0
+
     def test_saves_run_config(self, pipeline):
         config_path = pipeline.output_folder / "run_config.json"
         assert config_path.exists()
@@ -231,3 +246,43 @@ class TestPipelineRun:
             metrics = json.load(f)
         assert "elapsed_times" in metrics
         assert "start_timestamp" in metrics
+
+
+class TestRunFailureReporting:
+    """A run that dies mid-way must not look like a successful one."""
+
+    def test_run_reraises_the_failure(self, pipeline):
+        pipeline.generate_queries = MagicMock(side_effect=RuntimeError("extraction exploded"))
+
+        with pytest.raises(RuntimeError, match="extraction exploded"):
+            pipeline.run()
+
+    def test_failure_is_recorded_in_metrics(self, pipeline):
+        pipeline.generate_queries = MagicMock(side_effect=RuntimeError("extraction exploded"))
+
+        with pytest.raises(RuntimeError):
+            pipeline.run()
+
+        metrics = json.loads((pipeline.output_folder / "metrics.json").read_text())
+        assert metrics["error"] == "extraction exploded"
+
+    def test_finally_block_still_writes_timings(self, pipeline):
+        """Whatever the run did manage to produce still gets recorded."""
+        pipeline.generate_queries = MagicMock(side_effect=RuntimeError("extraction exploded"))
+
+        with pytest.raises(RuntimeError):
+            pipeline.run()
+
+        metrics = json.loads((pipeline.output_folder / "metrics.json").read_text())
+        assert "start_timestamp" in metrics and "end_timestamp" in metrics
+
+    def test_failure_is_not_logged_as_completed(self, pipeline):
+        messages = []
+        pipeline.notify = lambda message, level="info": messages.append(message)
+        pipeline.generate_queries = MagicMock(side_effect=RuntimeError("extraction exploded"))
+
+        with pytest.raises(RuntimeError):
+            pipeline.run()
+
+        assert not any("run completed" in m for m in messages)
+        assert any("run failed" in m for m in messages)

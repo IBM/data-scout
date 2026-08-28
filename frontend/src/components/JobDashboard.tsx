@@ -34,7 +34,7 @@ export default function JobDashboard({ onSelectJob }: { onSelectJob: (jobId: str
       .finally(() => setLoading(false));
   }, []);
 
-  const getStatusChip = (status: string) => {
+  const getStatusChip = (status?: string | null) => {
     const colorMap: Record<string, "default" | "success" | "warning" | "error" | "info"> = {
       completed: "success",
       running: "info",
@@ -43,10 +43,17 @@ export default function JobDashboard({ onSelectJob }: { onSelectJob: (jobId: str
       interrupted: "default",
     };
 
+    // A job whose args were recorded but whose status never was (e.g. the task
+    // failed to enqueue) leaves status null. Reading .charAt on that threw and
+    // took the whole dashboard down with a blank page, so render it as unknown.
+    const label = status
+      ? status.charAt(0).toUpperCase() + status.slice(1)
+      : "Unknown";
+
     return (
       <Chip
-        label={status.charAt(0).toUpperCase() + status.slice(1)}
-        color={colorMap[status] || "default"}
+        label={label}
+        color={(status && colorMap[status]) || "default"}
         size="small"
         variant="outlined"
       />
