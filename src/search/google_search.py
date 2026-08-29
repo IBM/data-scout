@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 ## RUN GOOGLE SEARCH QUERIES
 import time
 import requests

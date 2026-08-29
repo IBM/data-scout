@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from src.job_tracking.job_tracker import _redis_from_url
 import inspect
 import pytest

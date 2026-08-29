@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025-2026 IBM Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """ResultHandler output writing and upload.
 
 `save_metrics` and `compute_annotation_metrics` are exercised through the

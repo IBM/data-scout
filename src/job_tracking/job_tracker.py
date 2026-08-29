@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import redis
 from datetime import datetime, timezone
 from typing import Optional

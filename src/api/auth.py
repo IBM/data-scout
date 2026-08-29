@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from fastapi import Depends, HTTPException, Request, Security, WebSocketException
 from fastapi.security import APIKeyHeader
 from starlette.requests import HTTPConnection

@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """A stand-in for src.pipeline.extract_worker that segfaults on a marker document.
 
 A real crash depends on a specific malformed document that killed the parser in

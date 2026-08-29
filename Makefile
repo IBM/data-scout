@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Constants
 CELERY_APP=src.api.celery_worker.celery_app
 API_MODULE=src.api.main:app

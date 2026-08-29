@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Re-export facade — preserves backward compatibility for all consumers."""
 from src.processing.text_extraction import download, extract_simple_document, extract_pdf, is_pdf
 from src.processing.parsing import split_queries, response_to_bool, parse_sub_category, extract_json_objects

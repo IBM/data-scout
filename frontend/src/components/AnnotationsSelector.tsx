@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025-2026 IBM Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React from "react";
 import { Annotation, ALL_ANNOTATIONS } from "../models/Models";
 import { FormGroup, FormControlLabel, Checkbox, Typography } from "@mui/material";

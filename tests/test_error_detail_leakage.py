@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Exception text must not reach clients unless DEBUG_ERRORS is set.
 
 Error text in this codebase carries absolute filesystem paths, Redis URLs

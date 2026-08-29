@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from src.storage.base import StorageBackend
 from src.storage.s3 import S3StorageBackend
 from src.storage.local import LocalStorageBackend

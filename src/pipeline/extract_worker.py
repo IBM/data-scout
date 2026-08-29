@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Document extraction, run as a child process so a native crash is survivable.
 
 Extraction calls trafilatura, which parses with libxml2 -- a C extension. A

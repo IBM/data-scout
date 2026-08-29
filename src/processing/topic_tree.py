@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 class TopicNode:
     def __init__(self, value: str, path: list = None, parent=None, seen: set = None):
         """

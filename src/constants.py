@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 PROMPT_TEMPLATES = {
     "query": (
         'Can you come up with Google searches that I can perform to look-up different aspects of information related to the following user query: {input}.'

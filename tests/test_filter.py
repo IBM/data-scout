@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import pytest
 import pandas as pd
 from src.processing.filter import Filter

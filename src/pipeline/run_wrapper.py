@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from dotenv import load_dotenv
 from src.pipeline.pipeline import SearchPipeline
 from src.config import SearchConfig

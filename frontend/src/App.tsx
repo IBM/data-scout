@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025-2026 IBM Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import {

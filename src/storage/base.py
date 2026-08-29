@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional

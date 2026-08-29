@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Celery broker/backend resolution, which happens at import time.
 
 Hardcoding localhost here made the API point at nothing under Compose: job

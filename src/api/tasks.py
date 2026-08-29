@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from .celery_worker import celery_app
 from src.models import UserArgs
 from src.pipeline.run_wrapper import run_pipeline_from_args_dict

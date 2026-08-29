@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025-2026 IBM Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // src/theme/theme.ts
 import { createTheme } from "@mui/material/styles";
 import { red, blueGrey, teal } from "@mui/material/colors";

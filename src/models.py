@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List, Literal, Self
 import logging

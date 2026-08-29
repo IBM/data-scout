@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # --- Dependency build stage ---
 # The compiler toolchain lives here and is never copied forward, so it does not
 # ship inside the runtime images. Dependencies go into a self-contained venv

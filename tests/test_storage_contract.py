@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Both storage backends must satisfy the StorageBackend interface.
 
 They used to be plain classes, so the ABC enforced nothing and

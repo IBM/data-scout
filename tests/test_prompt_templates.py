@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Every mode and annotation must resolve a prompt template.
 
 A missing key is a KeyError at runtime for an input the models already accept,

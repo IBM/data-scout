@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """S3StorageBackend bucket/key resolution.
 
 pyarrow's S3FileSystem addresses objects as "bucket/key", so every path here is

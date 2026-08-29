@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch

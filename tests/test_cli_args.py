@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """run.py argument parsing: choices that were unreachable and dead branches."""
 from pathlib import Path
 

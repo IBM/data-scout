@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """API key verification -- the security boundary, previously untested.
 
 Both helpers exist because `APIKeyHeader` and `Request` are HTTP-only and cannot

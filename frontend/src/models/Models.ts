@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025-2026 IBM Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 export type Mode = "query" | "topic" | "keyword" | "search";
 export type OutputFormat = "jsonl" | "parquet";
 export type Annotation = "donotcrawl" | "relevancy";

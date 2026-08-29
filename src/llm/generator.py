@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import asyncio
 from tqdm.asyncio import tqdm
 from typing import List, Dict, Any

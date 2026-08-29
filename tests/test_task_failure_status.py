@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """A worker child that dies outright leaves no frame for the task's own
 `except` handlers, so the job hash kept the "running" it was given at the start
 and the dashboard showed the job running forever. JobStatusTask.on_failure runs

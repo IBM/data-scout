@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Extraction runs in a child process so a native parser crash is survivable.
 
 trafilatura parses via libxml2, and a malformed document can segfault it. When

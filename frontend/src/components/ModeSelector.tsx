@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025-2026 IBM Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React from "react";
 import { FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import { Mode } from "../models/Models";

@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """QueryGenerator behaviour when the LLM returns nothing.
 
 This is the first pipeline step, so a bad key or a wrong model name surfaces

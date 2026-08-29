@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from pathlib import Path

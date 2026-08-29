@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """The crawl policy is a runtime cache and is not committed, so a fresh
 checkout has neither the files nor their directory. Everything must work from
 that state."""

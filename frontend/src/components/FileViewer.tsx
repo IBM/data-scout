@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025-2026 IBM Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // src/components/FileViewer.tsx
 import React, { useEffect, useState } from "react";
 import {

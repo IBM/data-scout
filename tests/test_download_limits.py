@@ -1,3 +1,6 @@
+# Copyright 2025-2026 IBM Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """The download size cap must be enforced while reading, not after.
 
 `response.content` materialises the whole body first, so checking its length only
