@@ -383,3 +383,107 @@ class TestErrorDetailsAreNotLeaked:
 
         assert response.status_code == 500
         assert self.SECRET in response.text
+
+
+class TestFileViewLimits:
+    """`limit` was a bare int with no ceiling, so limit=10000000 returned the whole
+    file in one response. offset was already validated with ge=0."""
+
+    def _job(self, mock_redis_client, filename=b"searchresults.jsonl"):
+        mock_redis_client.hget.side_effect = lambda key, field: {
+            "storage_results_filename": filename,
+            "storage_upload_folder": b"results/searchresults/j1",
+        }.get(field)
+
+    def test_absurd_limit_is_rejected(self, client, mock_redis_client):
+        self._job(mock_redis_client)
+
+        response = client.get("/jobs/j1/files/view?file_type=results&limit=10000000")
+
+        assert response.status_code == 422
+
+    def test_zero_limit_is_rejected(self, client, mock_redis_client):
+        self._job(mock_redis_client)
+
+        response = client.get("/jobs/j1/files/view?file_type=results&limit=0")
+
+        assert response.status_code == 422
+
+    def test_the_documented_ceiling_is_accepted(self, client, mock_redis_client):
+        from src.api.routes import MAX_FILE_VIEW_LIMIT
+
+        self._job(mock_redis_client)
+        client.app.state.storage.read_file.return_value = b'{"a": 1}\n'
+
+        response = client.get(
+            f"/jobs/j1/files/view?file_type=results&limit={MAX_FILE_VIEW_LIMIT}"
+        )
+
+        assert response.status_code == 200
+
+    def test_default_limit_still_works(self, client, mock_redis_client):
+        self._job(mock_redis_client)
+        client.app.state.storage.read_file.return_value = b'{"a": 1}\n{"b": 2}\n'
+
+        response = client.get("/jobs/j1/files/view?file_type=results")
+
+        assert response.status_code == 200
+        assert len(response.json()["rows"]) == 2
+
+    def test_negative_offset_still_rejected(self, client, mock_redis_client):
+        self._job(mock_redis_client)
+
+        response = client.get("/jobs/j1/files/view?file_type=results&offset=-1")
+
+        assert response.status_code == 422
+
+
+class _RecordingTable:
+    """Records whether the route sliced before converting rows."""
+
+    def __init__(self, table):
+        self._table = table
+        self.sliced_with = None
+        self.converted_whole_table = False
+
+    def slice(self, offset, length):
+        self.sliced_with = (offset, length)
+        return self._table.slice(offset, length)
+
+    def to_pylist(self):
+        self.converted_whole_table = True
+        return self._table.to_pylist()
+
+    def __getattr__(self, name):
+        # everything else (schema, num_rows, ...) passes through to the real table
+        return getattr(self._table, name)
+
+
+class TestParquetPaginationDoesNotMaterialiseEverything:
+    """`to_pylist()` on the whole table converted every row to Python objects
+    before pagination, so even limit=50 paid for the entire file."""
+
+    def test_parquet_is_sliced_before_conversion(self, client, mock_redis_client):
+        import io as _io
+
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        table = pa.table({"n": list(range(500))})
+        buf = _io.BytesIO()
+        pq.write_table(table, buf)
+
+        mock_redis_client.hget.side_effect = lambda key, field: {
+            "storage_results_filename": b"searchresults.parquet",
+            "storage_upload_folder": b"results/searchresults/j1",
+        }.get(field)
+        client.app.state.storage.read_file.return_value = buf.getvalue()
+
+        recorder = _RecordingTable(table)
+        with patch("pyarrow.parquet.read_table", return_value=recorder):
+            response = client.get("/jobs/j1/files/view?file_type=results&offset=10&limit=5")
+
+        assert response.status_code == 200
+        assert [r["n"] for r in response.json()["rows"]] == [10, 11, 12, 13, 14]
+        assert recorder.sliced_with == (10, 5), "the table was not sliced before conversion"
+        assert not recorder.converted_whole_table, "every row was materialised anyway"

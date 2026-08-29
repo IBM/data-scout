@@ -26,6 +26,10 @@ ws_router = APIRouter()
 logger = logging.getLogger("pipeline_logger")
 _config = SearchConfig()
 
+# Ceiling for one page of file content. Without it the endpoint would return an
+# arbitrarily large response.
+MAX_FILE_VIEW_LIMIT = 1000
+
 
 def _tracker(job_id: str) -> JobTracker:
     return JobTracker(job_id, redis_url=_config.redis_url)
@@ -367,7 +371,9 @@ def view_file_content(
     job_id: str,
     file_type: str = Query(..., pattern="^(topics|results)$"),
     offset: int = Query(0, ge=0),
-    limit: int = 50,
+    # Bounded like offset already was: a bare int let limit=10000000 return the
+    # whole file in one response.
+    limit: int = Query(50, ge=1, le=MAX_FILE_VIEW_LIMIT),
     request: Request = None,
 ):
     tracker = _tracker(job_id)
@@ -411,8 +417,10 @@ def view_file_content(
 
             try:
                 table = pq.read_table(BytesIO(file_bytes))
-                all_rows = table.to_pylist()
-                paginated_rows = all_rows[offset:offset + limit]
+                # Slice the table, then convert: to_pylist() on the whole table
+                # materialised every row as Python objects before pagination was
+                # applied, so even limit=50 paid for the entire file.
+                paginated_rows = table.slice(offset, limit).to_pylist()
 
                 return {
                     "job_id": job_id,
