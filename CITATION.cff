@@ -3,17 +3,29 @@ message: "If you use this software, please cite it as below."
 title: "Data Scout: Targeted Web Crawling for Domain-Specific Pretraining Corpora"
 type: software
 authors:
-  - name: "IBM Research"
+  - family-names: "Zahid"
+    given-names: "Eelaaf"
+  - family-names: "Garg"
+    given-names: "Chirag"
 license: Apache-2.0
 repository-code: "https://github.com/IBM/data-scout"
 preferred-citation:
   type: conference-paper
   title: "Data Scout: Targeted Web Crawling for Domain-Specific Pretraining Corpora"
   authors:
-    - family-names: "Zahid"
-      given-names: "Eelaaf"
     - family-names: "Garg"
       given-names: "Chirag"
+    - family-names: "Zahid"
+      given-names: "Eelaaf"
+    - family-names: "Ahmed"
+      given-names: "Farhan"
+    - family-names: "Gala"
+      given-names: "Jay Pankaj"
+    - family-names: "Butler"
+      given-names: "Eric"
+    - family-names: "Ludwig"
+      given-names: "Heiko"
+    
   collection-title: "Proceedings of the 2026 Conference on Empirical Methods in Natural Language Processing (EMNLP)"
   year: 2026
   doi: "10.xxxx/xxxxx"
