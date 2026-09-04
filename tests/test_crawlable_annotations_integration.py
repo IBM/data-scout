@@ -8,7 +8,16 @@ from src.llm.generator import LLMClient
 from src.config import SearchConfig
 import tldextract
 
+# Read the same source the test does: LLM_API_KEY usually arrives via .env rather
+# than the process environment, so os.getenv would miss it and skip needlessly.
+_HAS_LLM_CREDENTIALS = bool(SearchConfig().llm_api_key)
+
+
 @pytest.mark.integration
+@pytest.mark.skipif(
+    not _HAS_LLM_CREDENTIALS,
+    reason="needs LLM_API_KEY; set it in .env or the environment to run this test",
+)
 def test_apply_donotcrawl_with_real_llm(tmp_path):
     settings = SearchConfig()
     
