@@ -1,9 +1,3 @@
 {
-  "settingsInheritedFrom": "whitesource-config/whitesource-config@master",
-  "scanSettings": {
-    "configMode": "AUTO",
-    "enableSCA": true,
-    "releaseProjectsRegex": "v[0-9].*",
-    "releaseProjectsSuffix": "DEMORELEASE"
-  }
+  "settingsInheritedFrom": "ibm-mend-config/mend-config@main"
 }
